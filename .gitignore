@@ -1,0 +1,9 @@
+﻿.DS_Store
+Thumbs.db
+node_modules/
+
+# Guard rail: tracker data must never land in this PUBLIC repo. See README.
+items/
+inbox/
+projects.yml
+board.json
