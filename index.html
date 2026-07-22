@@ -280,7 +280,11 @@ const S = {
   items:[], inbox:[], loading:false, error:"",
   filters:{projects:[],types:[],query:""},
   selected:null, capture:false, toast:"",
-  mobileTab:"read", segment:"needs-you", mobileView:"list"
+  mobileTab:"read", segment:"needs-you", mobileView:"list",
+  // Capture form lives in state, not in the DOM. render() rebuilds everything via
+  // innerHTML, so anything held only in an input is destroyed by any re-render -
+  // a toast firing, a breakpoint change, the mobile keyboard resizing the viewport.
+  captureText:"", captureProject:""
 };
 const isMobile = ()=> window.matchMedia("(max-width:820px)").matches;
 
@@ -494,6 +498,8 @@ async function appendCapture(text, project){
     await putFile(path, content, undefined, `board: capture ${path.replace("inbox/","")}`);
     S.inbox.unshift({ path, name:path.replace(/^inbox\/|\.md$/g,""), text, source:"board", when, isNew:true });
     S.capture = false;
+    S.captureText = ""; S.captureProject = "";   // else the form reopens pre-filled
+    if(S.mobileTab === "capture") S.mobileTab = "read";
     toast("Appended to inbox");
     render();
   }catch(e){ toast("Capture failed: "+e.message); }
@@ -628,15 +634,15 @@ function captureHTML(){
   const projects = Object.keys(PROJECT_DOT);
   return `<h3>New Item</h3>
     <p class="text-muted" style="font-size:12.5px">→ inbox/ · unnumbered, awaiting scoping by <code>wt</code></p>
-    <textarea class="input" id="cap-text" placeholder="What is the idea?"></textarea>
+    <textarea class="input" id="cap-text" placeholder="What is the idea?">${esc(S.captureText)}</textarea>
     <div class="crow" style="flex-wrap:wrap;margin:var(--space-4) 0">
-      ${projects.map(p=>`<button class="chip" data-capproj="${esc(p)}" aria-pressed="false">
+      ${projects.map(p=>`<button class="chip" data-capproj="${esc(p)}" aria-pressed="${p===S.captureProject}">
         <i class="dot" style="background:${PROJECT_DOT[p]}"></i>${esc(p)}</button>`).join("")}
     </div>
     <div class="crow" style="margin:0">
       <span class="spacer"></span>
       <button class="btn btn-ghost" data-close="1">Cancel</button>
-      <button class="btn btn-primary" id="cap-go" disabled>Append to inbox</button>
+      <button class="btn btn-primary" id="cap-go" ${S.captureText.trim()?"":"disabled"}>Append to inbox</button>
     </div>`;
 }
 
@@ -763,7 +769,6 @@ function toast(msg){
 }
 
 /* ── events ────────────────────────────────────────────────────────────── */
-let capProject = "";
 function wire(){
   const $ = s => document.querySelector(s);
   const on = (sel,ev,fn)=> document.querySelectorAll(sel).forEach(el=>el.addEventListener(ev,fn));
@@ -785,7 +790,9 @@ function wire(){
     localStorage.removeItem(LS.tok); localStorage.removeItem(LS.cache);
     S.token=""; S.error=""; render();
   };
-  if($("#new")) $("#new").onclick = ()=>{ S.capture=true; capProject=""; render(); };
+  if($("#new")) $("#new").onclick = ()=>{
+    S.capture=true; S.captureText=""; S.captureProject=""; render();
+  };
 
   const q = $("#q");
   if(q) q.oninput = e => { S.filters.query = e.target.value;
@@ -811,22 +818,34 @@ function wire(){
 
   const capText = $("#cap-text"), capGo = $("#cap-go");
   if(capText && capGo){
-    const sync = ()=>{ capGo.disabled = !capText.value.trim(); };
-    capText.oninput = sync; sync();
+    // Mirror into state on every keystroke, but never re-render from here: a render
+    // would recreate the textarea mid-typing and drop focus and caret.
+    capText.oninput = ()=>{ S.captureText = capText.value; capGo.disabled = !S.captureText.trim(); };
     document.querySelectorAll("[data-capproj]").forEach(b=>{
-      b.setAttribute("aria-pressed", String(b.dataset.capproj===capProject));
-      b.onclick = ()=>{ capProject = b.dataset.capproj===capProject?"":b.dataset.capproj;
+      b.onclick = ()=>{
+        S.captureProject = b.dataset.capproj===S.captureProject ? "" : b.dataset.capproj;
         document.querySelectorAll("[data-capproj]").forEach(x=>
-          x.setAttribute("aria-pressed", String(x.dataset.capproj===capProject))); };
+          x.setAttribute("aria-pressed", String(x.dataset.capproj===S.captureProject)));
+      };
     });
-    capGo.onclick = ()=> appendCapture(capText.value.trim(), capProject);
+    capGo.onclick = ()=> appendCapture(S.captureText.trim(), S.captureProject);
   }
 }
 
 document.addEventListener("keydown", e=>{
   if(e.key==="Escape" && (S.selected||S.capture)){ S.selected=null; S.capture=false; render(); }
 });
-let rt; window.addEventListener("resize", ()=>{ clearTimeout(rt); rt=setTimeout(render,150); });
+/* Re-render on resize ONLY when the desktop/mobile breakpoint actually flips.
+   On a phone, opening the software keyboard resizes the viewport, which used to
+   trigger a full innerHTML rebuild and wipe whatever was being typed. */
+let rt, lastMobile = isMobile();
+window.addEventListener("resize", ()=>{
+  clearTimeout(rt);
+  rt = setTimeout(()=>{
+    const now = isMobile();
+    if(now !== lastMobile){ lastMobile = now; render(); }
+  }, 150);
+});
 
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 render();
