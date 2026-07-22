@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#161826">
+<title>worktracker</title>
+<link rel="manifest" href="manifest.webmanifest">
+<style>
+/* ── Nocturne tokens ────────────────────────────────────────────────────────
+   From design_handoff_worktracker/designs/nocturne-tokens.css. The upstream
+   sheet opens with an @import of Google Fonts; that is a CDN request the brief
+   forbids and a strict CSP would block, so Inter is used only if installed
+   locally and system-ui carries the rest. */
+:root{
+  --color-bg:#161826; --color-surface:#232532; --color-text:#e9e9ed;
+  --color-accent:#9184d9; --color-accent-2:#a7a1db;
+  --color-divider:color-mix(in srgb,#e9e9ed 16%,transparent);
+  --color-neutral-100:#f3f5fe; --color-neutral-200:#e4e7f5; --color-neutral-300:#cfd3e5;
+  --color-neutral-400:#b2b6ca; --color-neutral-500:#9397ab; --color-neutral-600:#75798c;
+  --color-neutral-700:#595d6c; --color-neutral-800:#3f424d; --color-neutral-900:#292b31;
+  --color-accent-100:#f5f4ff; --color-accent-200:#e7e5fe; --color-accent-300:#d2cefd;
+  --color-accent-400:#b5abfc; --color-accent-500:#968ae0; --color-accent-600:#796cbf;
+  --color-accent-700:#5d5294; --color-accent-800:#423a6a; --color-accent-900:#2b2741;
+  --font-heading:"Inter",system-ui,sans-serif; --font-body:"Inter",system-ui,sans-serif;
+  --font-heading-weight:500;
+  --space-1:2.8px; --space-2:5.6px; --space-3:8.4px; --space-4:11.2px;
+  --space-6:16.8px; --space-8:22.4px;
+  --radius-sm:4px; --radius-md:8px; --radius-lg:14px;
+  --shadow-sm:0 0 0 1px #3f424d;
+  --shadow-md:0 0 0 1px #595d6c,0 6px 18px rgba(0,0,0,.55);
+  --shadow-lg:0 0 0 1px #9397ab,0 16px 40px rgba(0,0,0,.65);
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--color-bg);color:var(--color-text);
+  font-family:var(--font-body);font-size:15px;line-height:1.55;
+  -webkit-font-smoothing:antialiased}
+h1,h2,h3,h4{font-family:var(--font-heading);font-weight:var(--font-heading-weight);
+  line-height:1.12;letter-spacing:-.015em;margin:0 0 var(--space-2)}
+h3{font-size:22px}
+p{margin:0 0 var(--space-3)}
+:focus{outline:none}
+:focus-visible{outline:2px solid var(--color-accent);outline-offset:2px}
+::selection{background:color-mix(in srgb,var(--color-accent) 30%,transparent)}
+.text-muted{color:color-mix(in srgb,var(--color-text) 55%,transparent)}
+.num{font-variant-numeric:tabular-nums}
+
+/* ── controls (Nocturne: buttons are outlined, never solid-filled) ── */
+.btn{font:inherit;font-size:12.5px;padding:var(--space-2) var(--space-4);
+  background:transparent;color:var(--color-text);border:1px solid var(--color-neutral-700);
+  border-radius:var(--radius-sm);cursor:pointer;transition:background .12s,border-color .12s}
+.btn:hover{background:color-mix(in srgb,var(--color-neutral-100) 7%,transparent)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-primary{border-color:var(--color-accent);color:var(--color-accent-300)}
+.btn-primary:hover{background:color-mix(in srgb,var(--color-accent) 15%,transparent)}
+.btn-ghost{border-color:transparent;color:var(--color-neutral-400)}
+.btn-ghost:hover{background:color-mix(in srgb,var(--color-neutral-100) 6%,transparent)}
+.btn-icon{padding:var(--space-2);line-height:1;border-color:transparent;color:var(--color-neutral-400)}
+.input{font:inherit;font-size:13px;padding:var(--space-2) var(--space-3);
+  background:var(--color-bg);color:var(--color-text);
+  border:1px solid var(--color-neutral-800);border-radius:var(--radius-sm);width:100%}
+.input::placeholder{color:var(--color-neutral-600)}
+textarea.input{min-height:110px;resize:vertical;line-height:1.5}
+.tag{display:inline-flex;align-items:center;gap:4px;font-size:9.5px;letter-spacing:.07em;
+  text-transform:uppercase;padding:2px 6px;border-radius:var(--radius-sm);
+  background:var(--color-neutral-800);color:var(--color-neutral-100);
+  border:1px solid var(--color-neutral-700);white-space:nowrap}
+.tag-outline{background:transparent;border-color:var(--color-accent-700);color:var(--color-accent-300)}
+.tag-pub{background:color-mix(in srgb,var(--color-accent) 22%,transparent);
+  border-color:var(--color-accent-600);color:var(--color-accent-200)}
+
+/* ── shell ── */
+#app{display:flex;flex-direction:column;height:100%;overflow:hidden}
+.topbar{display:flex;align-items:center;gap:var(--space-4);padding:var(--space-3) var(--space-6);
+  border-bottom:1px solid var(--color-neutral-900);flex:0 0 auto}
+.brand{display:flex;align-items:center;gap:var(--space-3);font-family:var(--font-heading);
+  font-weight:500;font-size:15px}
+.brand i{width:13px;height:13px;border-radius:3px;background:var(--color-accent);
+  box-shadow:0 0 14px color-mix(in srgb,var(--color-accent) 65%,transparent);display:block}
+.spacer{flex:1}
+.badge{font-size:11px;padding:2px 8px;border-radius:999px;background:var(--color-accent-800);
+  color:var(--color-accent-200);border:1px solid var(--color-accent-700);cursor:pointer}
+.filterbar{display:flex;align-items:center;gap:var(--space-2);flex-wrap:wrap;
+  padding:var(--space-3) var(--space-6);border-bottom:1px solid var(--color-neutral-900);flex:0 0 auto}
+.flabel{font-size:9.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--color-neutral-600);
+  margin-right:var(--space-1)}
+.chip{font:inherit;font-size:11.5px;padding:3px 9px;border-radius:999px;cursor:pointer;
+  background:transparent;border:1px solid var(--color-neutral-800);color:var(--color-neutral-400);
+  display:inline-flex;align-items:center;gap:5px}
+.chip:hover{border-color:var(--color-neutral-700)}
+.chip[aria-pressed="true"]{background:color-mix(in srgb,var(--color-accent) 18%,transparent);
+  border-color:var(--color-accent-600);color:var(--color-accent-200)}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:0 0 auto}
+.sep{width:1px;height:16px;background:var(--color-neutral-900);margin:0 var(--space-2)}
+
+/* ── board ── */
+.board{flex:1;display:flex;gap:14px;overflow-x:auto;overflow-y:hidden;padding:var(--space-6)}
+.col{flex:0 0 262px;display:flex;flex-direction:column;border-radius:var(--radius-lg);
+  background:color-mix(in srgb,var(--color-surface) 45%,var(--color-bg));
+  border:1px solid var(--color-neutral-900);overflow:hidden}
+.col.needs{background:color-mix(in srgb,var(--color-accent) 9%,var(--color-bg));
+  border-color:var(--color-accent-800)}
+.colhead{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-4);
+  font-size:12.5px;font-family:var(--font-heading);flex:0 0 auto}
+.col.needs .colhead{color:var(--color-accent-200)}
+.count{font-size:10.5px;padding:1px 7px;border-radius:999px;background:var(--color-neutral-900);
+  color:var(--color-neutral-400);border:1px solid var(--color-neutral-800)}
+.collist{flex:1;overflow-y:auto;padding:0 var(--space-3) var(--space-3);
+  display:flex;flex-direction:column;gap:var(--space-3)}
+.empty{border:1px dashed var(--color-neutral-800);border-radius:var(--radius-md);
+  padding:var(--space-6) var(--space-4);text-align:center;font-size:11.5px;
+  color:var(--color-neutral-600)}
+
+/* ── card ── */
+.card{position:relative;background:var(--color-surface);border:1px solid var(--color-neutral-800);
+  border-radius:var(--radius-md);padding:var(--space-3) var(--space-4);cursor:pointer;
+  transition:transform .12s,box-shadow .12s;overflow:hidden;text-align:left;width:100%;
+  font:inherit;color:inherit;display:block}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--stripe)}
+.card:hover{transform:translateY(-2px);box-shadow:var(--shadow-md)}
+.card:active{transform:scale(.985)}
+.card.pub{border-left-color:transparent;
+  box-shadow:0 6px 22px color-mix(in srgb,var(--color-accent) 22%,transparent)}
+.card.quick{box-shadow:0 0 0 1px var(--color-accent-700)}
+.card.blocked{border-style:dashed}
+.card.sel{box-shadow:0 0 0 2px var(--color-accent)}
+.crow{display:flex;align-items:center;gap:var(--space-2);margin-bottom:var(--space-2)}
+.cproj{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--color-neutral-400)}
+.ctitle{font-family:var(--font-heading);font-weight:500;font-size:14px;line-height:1.3;
+  text-wrap:pretty;margin-bottom:var(--space-2)}
+.card.blocked .ctitle{color:var(--color-neutral-400)}
+.card.cancelled .ctitle{text-decoration:line-through;color:var(--color-neutral-500)}
+.cid{font-size:10.5px;color:var(--color-neutral-400)}
+.chip-status{font-size:9.5px;letter-spacing:.05em;padding:2px 6px;border-radius:var(--radius-sm)}
+.meter{display:inline-flex;align-items:flex-end;gap:2px;height:11px}
+.meter i{width:3px;border-radius:1px;background:var(--color-neutral-800);display:block}
+.meter i.on{background:var(--color-neutral-300)}
+.meter i:nth-child(1){height:5px}.meter i:nth-child(2){height:8px}.meter i:nth-child(3){height:11px}
+.eff{font-size:10px;padding:1px 5px;border-radius:var(--radius-sm);
+  background:var(--color-neutral-900);color:var(--color-neutral-300);border:1px solid var(--color-neutral-800)}
+.blockedby{display:flex;align-items:center;gap:5px;margin-top:var(--space-2);
+  font-size:10.5px;color:var(--color-neutral-500)}
+.diamond{width:6px;height:6px;background:var(--color-neutral-600);transform:rotate(45deg);display:block}
+
+/* ── drawer / sheet ── */
+.backdrop{position:fixed;inset:0;background:rgba(0,0,0,.55);opacity:0;pointer-events:none;
+  transition:opacity .16s;z-index:40}
+.backdrop.on{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:min(460px,100%);background:var(--color-bg);
+  box-shadow:var(--shadow-lg);z-index:50;display:flex;flex-direction:column;
+  transform:translateX(28px);opacity:0;pointer-events:none;
+  transition:transform .22s cubic-bezier(.2,.7,.3,1),opacity .22s}
+.drawer.on{transform:none;opacity:1;pointer-events:auto}
+.dstripe{height:3px;background:var(--stripe);flex:0 0 auto}
+.dbody{overflow-y:auto;padding:var(--space-6);flex:1}
+.dmeta{display:flex;gap:var(--space-8);flex-wrap:wrap;padding:var(--space-4) 0;
+  border-top:1px solid var(--color-neutral-900);border-bottom:1px solid var(--color-neutral-900);
+  margin-bottom:var(--space-6)}
+.dmeta h6{font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--color-neutral-600);margin:0 0 4px;font-weight:500}
+.dtext{font-size:13.5px;line-height:1.7;max-width:640px;color:var(--color-neutral-200)}
+.dtext p{margin:0 0 var(--space-4)}
+.gate{border:1px solid var(--color-accent-800);background:color-mix(in srgb,var(--color-accent) 8%,transparent);
+  border-radius:var(--radius-md);padding:var(--space-4);font-size:12.5px;
+  color:var(--color-accent-200);margin:var(--space-6) 0}
+.dactions{display:flex;gap:var(--space-3);flex-wrap:wrap;padding:var(--space-6);
+  border-top:1px solid var(--color-neutral-900);flex:0 0 auto}
+.banner{border:1px dashed var(--color-neutral-700);border-radius:var(--radius-md);
+  padding:var(--space-3) var(--space-4);font-size:12px;color:var(--color-neutral-400);
+  margin-bottom:var(--space-4)}
+
+/* ── dialog ── */
+.dialog{position:fixed;left:50%;top:50%;transform:translate(-50%,-48%);width:min(460px,92vw);
+  background:var(--color-bg);border:1px solid var(--color-neutral-800);border-radius:var(--radius-lg);
+  box-shadow:var(--shadow-lg);z-index:50;padding:var(--space-6);opacity:0;pointer-events:none;
+  transition:opacity .16s,transform .16s}
+.dialog.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%)}
+
+/* ── toast ── */
+.toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,8px);z-index:60;
+  display:flex;align-items:center;gap:var(--space-3);font-size:12.5px;
+  background:var(--color-surface);border:1px solid var(--color-neutral-700);
+  border-radius:999px;padding:var(--space-2) var(--space-6);box-shadow:var(--shadow-md);
+  opacity:0;pointer-events:none;transition:opacity .2s,transform .2s}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* ── auth / status screens ── */
+.center{flex:1;display:flex;align-items:center;justify-content:center;padding:var(--space-8)}
+.panel{width:min(520px,100%);background:var(--color-surface);border:1px solid var(--color-neutral-800);
+  border-radius:var(--radius-lg);padding:var(--space-8)}
+.panel ol{font-size:13px;color:var(--color-neutral-300);line-height:1.8;padding-left:18px;margin:0 0 var(--space-6)}
+.panel code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+  background:var(--color-neutral-900);padding:1px 5px;border-radius:3px}
+.err{color:#ffb4a8;font-size:12.5px;margin-top:var(--space-4)}
+
+/* ── mobile ── */
+.seg{display:flex;gap:4px;background:var(--color-neutral-900);border-radius:999px;padding:3px;
+  overflow-x:auto;scrollbar-width:none}
+.seg::-webkit-scrollbar{display:none}
+.seg-opt{font:inherit;font-size:12px;padding:5px 12px;border-radius:999px;border:0;
+  background:transparent;color:var(--color-neutral-400);cursor:pointer;white-space:nowrap}
+.seg-opt[aria-pressed="true"]{background:var(--color-accent-800);color:var(--color-accent-100)}
+.mlist{flex:1;overflow-y:auto;padding:var(--space-4) var(--space-4) 90px;
+  display:flex;flex-direction:column;gap:var(--space-3)}
+.mlist.needs{background:color-mix(in srgb,var(--color-accent) 6%,transparent)}
+.tabbar{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--color-bg);
+  border-top:1px solid var(--color-neutral-900);z-index:30;
+  padding-bottom:env(safe-area-inset-bottom)}
+.tab{flex:1;font:inherit;font-size:12px;background:transparent;border:0;cursor:pointer;
+  color:var(--color-neutral-500);padding:14px 0;min-height:52px}
+.tab[aria-pressed="true"]{color:var(--color-accent)}
+.sheet{position:fixed;left:0;right:0;bottom:0;max-height:86vh;background:var(--color-bg);
+  border-radius:var(--radius-lg) var(--radius-lg) 0 0;box-shadow:var(--shadow-lg);z-index:50;
+  display:flex;flex-direction:column;transform:translateY(24px);opacity:0;pointer-events:none;
+  transition:transform .24s cubic-bezier(.2,.7,.3,1),opacity .24s}
+.sheet.on{transform:none;opacity:1;pointer-events:auto}
+.handle{width:36px;height:4px;border-radius:2px;background:var(--color-neutral-700);
+  margin:var(--space-3) auto}
+.inboxitem{border:1px dashed var(--color-neutral-800);border-radius:var(--radius-md);
+  padding:var(--space-3) var(--space-4);font-size:13px;color:var(--color-neutral-200)}
+@media (max-width:820px){
+  .topbar{padding:var(--space-3) var(--space-4)}
+  .btn,.tab{min-height:44px}
+  .chip,.seg-opt{min-height:36px}
+}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════════════════
+   worktracker board
+
+   A single self-contained page. Reads item markdown from the PRIVATE
+   simpsonbm1/worktracker repo through the GitHub REST API using a
+   fine-grained PAT held in localStorage, and writes back in place.
+
+   No tracker data is ever stored in this repository.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const CFG = { owner:"simpsonbm1", repo:"worktracker", branch:"main" };
+const LS  = { tok:"wt.token", cache:"wt.blobs" };
+
+const NEEDS   = ["needs-test","needs-decision","needs-asset"];
+const CLOSED  = ["done","cancelled"];
+const PROJECT_DOT = {
+  idlegame:"var(--color-accent)", askamods:"var(--color-neutral-300)",
+  "eq-luas":"var(--color-neutral-500)", general:"var(--color-neutral-700)",
+  "claude-config":"var(--color-accent-700)", worktracker:"var(--color-neutral-400)"
+};
+const TYPE_SHORT = { feature:"FEAT", bug:"BUG", idea:"IDEA", research:"RSCH",
+                     chore:"CHORE", application:"APP" };
+
+/* Status → intent. Colour follows intent, not the literal status. */
+function statusMeta(s){
+  switch(s){
+    case "scoped":         return {stripe:"oklch(.62 .08 250)",  bg:"oklch(.33 .045 250)", fg:"oklch(.85 .07 250)", label:"Scoped"};
+    case "in-progress":    return {stripe:"oklch(.67 .11 235)",  bg:"oklch(.35 .06 235)",  fg:"oklch(.86 .09 235)", label:"In progress"};
+    case "blocked":        return {stripe:"oklch(.62 .10 28)",   bg:"oklch(.34 .06 28)",   fg:"oklch(.83 .09 28)",  label:"Blocked"};
+    case "waiting":        return {stripe:"oklch(.68 .09 75)",   bg:"oklch(.35 .05 75)",   fg:"oklch(.84 .08 75)",  label:"Waiting"};
+    case "needs-test":     return {stripe:"var(--color-accent)", bg:"var(--color-accent-800)", fg:"var(--color-accent-100)", label:"Needs test"};
+    case "needs-decision": return {stripe:"var(--color-accent)", bg:"var(--color-accent-800)", fg:"var(--color-accent-100)", label:"Needs decision"};
+    case "needs-asset":    return {stripe:"var(--color-accent)", bg:"var(--color-accent-800)", fg:"var(--color-accent-100)", label:"Needs asset"};
+    case "done":           return {stripe:"oklch(.60 .08 155)",  bg:"oklch(.32 .045 155)", fg:"oklch(.82 .07 155)", label:"Done"};
+    case "cancelled":      return {stripe:"var(--color-neutral-700)", bg:"var(--color-neutral-800)", fg:"var(--color-neutral-300)", label:"Cancelled"};
+    default:               return {stripe:"var(--color-neutral-700)", bg:"var(--color-neutral-800)", fg:"var(--color-neutral-300)", label:s||"?"};
+  }
+}
+
+/* ── state ─────────────────────────────────────────────────────────────── */
+const S = {
+  token:localStorage.getItem(LS.tok)||"",
+  items:[], inbox:[], loading:false, error:"",
+  filters:{projects:[],types:[],query:""},
+  selected:null, capture:false, toast:"",
+  mobileTab:"read", segment:"needs-you", mobileView:"list"
+};
+const isMobile = ()=> window.matchMedia("(max-width:820px)").matches;
+
+/* ── utilities ─────────────────────────────────────────────────────────── */
+const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const today = ()=> new Date().toISOString().slice(0,10);
+
+function b64encode(str){
+  const bytes = new TextEncoder().encode(str);
+  let bin=""; const CH=0x8000;
+  for(let i=0;i<bytes.length;i+=CH) bin += String.fromCharCode.apply(null,bytes.subarray(i,i+CH));
+  return btoa(bin);
+}
+function b64decode(b64){
+  const bin = atob(String(b64).replace(/\s/g,""));
+  return new TextDecoder().decode(Uint8Array.from(bin,c=>c.charCodeAt(0)));
+}
+
+/* ── GitHub API ────────────────────────────────────────────────────────── */
+async function gh(path, opts={}){
+  const res = await fetch("https://api.github.com"+path, {
+    ...opts,
+    headers:{ Authorization:"Bearer "+S.token, Accept:"application/vnd.github+json",
+              "X-GitHub-Api-Version":"2022-11-28", ...(opts.headers||{}) }
+  });
+  if(!res.ok){
+    let detail=""; try{ detail = (await res.json()).message||""; }catch{}
+    const e = new Error(`${res.status} ${detail}`); e.status = res.status; throw e;
+  }
+  return res.json();
+}
+
+/* Blob contents are immutable per sha, so caching by sha means a reload only
+   refetches files that actually changed. */
+function blobCache(){ try{ return JSON.parse(localStorage.getItem(LS.cache)||"{}"); }catch{ return {}; } }
+function saveBlobCache(c){
+  const keys = Object.keys(c);
+  if(keys.length > 800) keys.slice(0, keys.length-800).forEach(k=>delete c[k]);
+  try{ localStorage.setItem(LS.cache, JSON.stringify(c)); }catch{}
+}
+
+async function loadAll(){
+  S.loading = true; S.error=""; render();
+  try{
+    const tree = await gh(`/repos/${CFG.owner}/${CFG.repo}/git/trees/${CFG.branch}?recursive=1`);
+    const wanted = tree.tree.filter(n =>
+      n.type==="blob" && n.path.endsWith(".md") &&
+      (n.path.startsWith("items/") || n.path.startsWith("inbox/")));
+
+    const cache = blobCache();
+    const missing = wanted.filter(n => !cache[n.sha]);
+
+    // Modest concurrency: enough to be quick, not enough to trip secondary limits.
+    const QUEUE = missing.slice();
+    await Promise.all(Array.from({length:Math.min(6,QUEUE.length)}, async ()=>{
+      while(QUEUE.length){
+        const n = QUEUE.shift();
+        const blob = await gh(`/repos/${CFG.owner}/${CFG.repo}/git/blobs/${n.sha}`);
+        cache[n.sha] = b64decode(blob.content);
+      }
+    }));
+    saveBlobCache(cache);
+
+    S.items = wanted.filter(n=>n.path.startsWith("items/"))
+                    .map(n => parseItem(cache[n.sha], n.path, n.sha))
+                    .filter(Boolean);
+    S.inbox = wanted.filter(n=>n.path.startsWith("inbox/"))
+                    .map(n => parseInbox(cache[n.sha], n.path))
+                    .sort((a,b)=> b.name.localeCompare(a.name));
+    S.loading = false; render();
+  }catch(e){
+    S.loading=false;
+    S.error = e.status===401 ? "Token rejected (401). It may be expired or lack Contents access."
+            : e.status===404 ? "Repo not found (404). The token needs access to simpsonbm1/worktracker."
+            : e.status===403 ? "Forbidden (403) — rate limited, or the token lacks Contents permission."
+            : "Load failed: "+e.message;
+    render();
+  }
+}
+
+/* ── parsing ───────────────────────────────────────────────────────────── */
+function parseItem(raw, path, sha){
+  if(!raw) return null;
+  const m = raw.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
+  if(!m) return null;
+  const f = {};
+  m[1].split(/\r?\n/).forEach(line=>{
+    const kv = line.match(/^([A-Za-z_]+):\s*(.*)$/);
+    if(!kv) return;
+    let v = kv[2].trim();
+    if(/^\[.*\]$/.test(v)){
+      const inner = v.slice(1,-1).trim();
+      v = inner ? inner.split(",").map(x=>x.trim().replace(/^["']|["']$/g,"")).filter(Boolean) : [];
+    } else v = v.replace(/^["']|["']$/g,"");
+    f[kv[1]] = v;
+  });
+  const tags = Array.isArray(f.tags)?f.tags:[];
+  return {
+    path, sha, raw, body:(m[2]||"").trim(),
+    id:f.id||"", title:f.title||"(untitled)", project:f.project||"", type:f.type||"",
+    status:f.status||"scoped", impact:f.impact||"med", effort:f.effort||"-",
+    updated:f.updated||"", closed:f.closed||"", tags,
+    blocked_by:Array.isArray(f.blocked_by)?f.blocked_by:[],
+    published: tags.includes("published")
+  };
+}
+function parseInbox(raw, path){
+  const name = path.replace(/^inbox\//,"").replace(/\.md$/,"");
+  const lines = String(raw||"").split(/\r?\n/);
+  const text = lines.filter(l=>l.trim() && !/^(captured|source):/.test(l)).join("\n").trim();
+  const src = (lines.find(l=>/^source:/.test(l))||"").replace(/^source:\s*/,"");
+  const when = (lines.find(l=>/^captured:/.test(l))||"").replace(/^captured:\s*/,"");
+  return { path, name, text, source:src, when };
+}
+
+/* ── writing: in-place line edits ──────────────────────────────────────────
+   The CLI (tools/wt.ps1) owns the canonical serialisation. If this page
+   re-emitted whole files, its formatting would drift from wt's writer and
+   every board move would produce a churn diff. So it only ever rewrites the
+   specific frontmatter LINE it is changing, and never re-serialises. */
+function setField(raw, key, value){
+  const m = raw.match(/^(---\r?\n)([\s\S]*?)(\r?\n---)/);
+  if(!m) return raw;
+  const head = m[2];
+  const re = new RegExp(`^${key}:.*$`,"m");
+  const next = re.test(head) ? head.replace(re, `${key}: ${value}`)
+                             : head + `\n${key}: ${value}`;
+  return raw.replace(head, next);
+}
+function appendBody(raw, line){ return raw.replace(/\s*$/,"") + "\n\n" + line + "\n"; }
+
+async function putFile(path, content, sha, message){
+  return gh(`/repos/${CFG.owner}/${CFG.repo}/contents/${encodeURI(path)}`, {
+    method:"PUT",
+    body: JSON.stringify({ message, content:b64encode(content), sha, branch:CFG.branch })
+  });
+}
+
+/* Every board write is attributed 'board:' so provenance is visible in the log
+   next to wt's own 'wt:' commits. */
+async function commitItem(item, newRaw, message){
+  try{
+    const res = await putFile(item.path, newRaw, item.sha, message);
+    const c = blobCache(); c[res.content.sha] = newRaw; saveBlobCache(c);
+    item.sha = res.content.sha; item.raw = newRaw;
+    return true;
+  }catch(e){
+    if(e.status===409 || e.status===422){
+      toast("Someone else changed that item — reloading");
+      await loadAll();
+      return false;
+    }
+    toast("Write failed: "+e.message);
+    return false;
+  }
+}
+
+/* ── gate-aware transitions (mirrors the CLI gates) ────────────────────── */
+function actionsFor(st){
+  switch(st){
+    case "scoped":         return [["Start work","in-progress","primary"]];
+    case "in-progress":    return [["Send to test","needs-test","primary"],["Block","blocked",""]];
+    case "blocked":        return [["Unblock","scoped","primary"]];
+    case "waiting":        return [["Resume","scoped","primary"]];
+    case "needs-test":     return [["✓ Confirm","__confirm","primary"],["Send back","in-progress",""]];
+    case "needs-decision": return [["Decision made","in-progress","primary"]];
+    case "needs-asset":    return [["Asset delivered","scoped","primary"]];
+    case "done": case "cancelled": return [["Reopen","scoped",""]];
+    default: return [];
+  }
+}
+
+async function moveItem(item, target){
+  const from = item.status;
+  const confirming = target === "__confirm";
+  const to = confirming ? "done" : target;
+
+  // The confirmation gate: needs-test never clears except through Confirm,
+  // which records who confirmed it and when — the same evidence wt writes.
+  if(to==="done" && from==="needs-test" && !confirming){
+    toast("needs-test only clears via Confirm"); return;
+  }
+
+  let raw = setField(item.raw,"status",to);
+  raw = setField(raw,"updated",today());
+  raw = CLOSED.includes(to) ? setField(raw,"closed",today()) : setField(raw,"closed","");
+  // Effort estimates BUILD work; once the ball is in the user's court it no
+  // longer applies. Mirrors wt move.
+  if(NEEDS.includes(to)) raw = setField(raw,"effort","-");
+  if(confirming) raw = appendBody(raw, `**Confirmed ${today()} by the user** (was ${from}). Confirmed from the board.`);
+
+  const msg = confirming ? `board: confirm ${item.id} ${item.title}`
+                         : `board: move ${item.id} ${from} -> ${to}`;
+  const ok = await commitItem(item, raw, msg);
+  if(!ok) return;
+  Object.assign(item, parseItem(raw, item.path, item.sha));
+  S.selected = null;
+  toast(confirming ? `#${item.id} confirmed` : `#${item.id} → ${to}`);
+  render();
+}
+
+async function appendCapture(text, project){
+  const stamp = new Date().toISOString().replace(/[:-]/g,"").replace(/\.\d+Z$/,"Z")
+                  .replace(/^(\d{4})(\d{2})(\d{2})T(\d{4})\d*Z$/,"$1-$2-$3T$4Z");
+  const slug = text.split("\n")[0].toLowerCase().replace(/[^a-z0-9]+/g,"-")
+                   .replace(/^-|-$/g,"").slice(0,50) || "capture";
+  const path = `inbox/${stamp}-${slug}.md`;
+  const when = new Date().toISOString().slice(0,16).replace("T"," ");
+  const content = `captured: ${when} UTC\nsource: board${project?" ("+project+")":""}\n\n${text}\n`;
+  try{
+    await putFile(path, content, undefined, `board: capture ${path.replace("inbox/","")}`);
+    S.inbox.unshift({ path, name:path.replace(/^inbox\/|\.md$/g,""), text, source:"board", when, isNew:true });
+    S.capture = false;
+    toast("Appended to inbox");
+    render();
+  }catch(e){ toast("Capture failed: "+e.message); }
+}
+
+/* ── ranking ───────────────────────────────────────────────────────────── */
+const IMPACT_RANK = { high:0, med:1, low:2 };
+const EFFORT_RANK = { S:0, M:1, L:2, "-":3 };
+function rank(a,b){
+  const i = (IMPACT_RANK[a.impact]??3) - (IMPACT_RANK[b.impact]??3);
+  if(i) return i;
+  const p = (a.published?0:1) - (b.published?0:1);   // published breaks ties WITHIN impact
+  if(p) return p;
+  const e = (EFFORT_RANK[a.effort]??3) - (EFFORT_RANK[b.effort]??3);
+  if(e) return e;
+  return String(a.id).localeCompare(String(b.id));
+}
+const isQuickWin = it => it.impact==="high" && it.effort==="S" &&
+                         (it.status==="scoped"||it.status==="in-progress");
+
+/* Filters narrow only; they never reorder, so the board stays learnable. */
+function visible(){
+  const {projects,types,query} = S.filters;
+  const q = query.trim().toLowerCase();
+  return S.items.filter(it =>
+    (!projects.length || projects.includes(it.project)) &&
+    (!types.length    || types.includes(it.type)) &&
+    (!q || it.title.toLowerCase().includes(q) || String(it.id).includes(q)));
+}
+
+/* ── rendering ─────────────────────────────────────────────────────────── */
+function cardHTML(it){
+  const m = statusMeta(it.status);
+  const cls = ["card", it.published?"pub":"", isQuickWin(it)?"quick":"",
+               it.status==="blocked"?"blocked":"", it.status==="cancelled"?"cancelled":"",
+               S.selected===it.id?"sel":""].filter(Boolean).join(" ");
+  const stripe = it.published ? "var(--color-accent)" : m.stripe;
+  const impact = IMPACT_RANK[it.impact]===0?3:IMPACT_RANK[it.impact]===1?2:1;
+  const showEffort = !NEEDS.includes(it.status) && it.effort && it.effort!=="-";
+  return `<button class="${cls}" style="--stripe:${stripe}" data-id="${esc(it.id)}">
+    <div class="crow">
+      <span class="cproj"><i class="dot" style="background:${PROJECT_DOT[it.project]||"var(--color-neutral-600)"}"></i>${esc(it.project)}</span>
+      <span class="tag">${esc(TYPE_SHORT[it.type]||it.type||"—")}</span>
+      <span class="spacer"></span>
+      ${isQuickWin(it)?'<span class="tag tag-outline">Quick win</span>':""}
+      ${it.published?'<span class="tag tag-pub">Published</span>':""}
+    </div>
+    <div class="ctitle">${esc(it.title)}</div>
+    <div class="crow" style="margin:0">
+      <span class="cid num">${esc(it.id)}</span>
+      <span class="chip-status" style="background:${m.bg};color:${m.fg}">${esc(m.label)}</span>
+      <span class="spacer"></span>
+      <span class="meter" title="impact: ${esc(it.impact)}">
+        <i class="${impact>=1?"on":""}"></i><i class="${impact>=2?"on":""}"></i><i class="${impact>=3?"on":""}"></i>
+      </span>
+      ${showEffort?`<span class="eff num">${esc(it.effort)}</span>`:""}
+    </div>
+    ${it.status==="blocked"&&it.blocked_by.length?
+      `<div class="blockedby"><i class="diamond"></i>blocked by ${it.blocked_by.map(esc).join(", ")}</div>`:""}
+  </button>`;
+}
+
+const COLUMNS = [
+  {key:"scoped",      name:"Scoped",      match:it=>it.status==="scoped"},
+  {key:"in-progress", name:"In progress", match:it=>it.status==="in-progress"},
+  {key:"blocked",     name:"Blocked",     match:it=>it.status==="blocked"},
+  {key:"waiting",     name:"Waiting",     match:it=>it.status==="waiting"},
+  {key:"needs",       name:"Needs you",   match:it=>NEEDS.includes(it.status), accent:true},
+  {key:"done",        name:"Done",        match:it=>CLOSED.includes(it.status)}
+];
+
+function boardHTML(){
+  const items = visible();
+  return `<div class="board">${COLUMNS.map(col=>{
+    const list = items.filter(col.match).sort(rank);
+    const shown = col.key==="done" ? list.slice(0,8) : list;
+    return `<section class="col ${col.accent?"needs":""}">
+      <header class="colhead">
+        <i class="dot" style="background:${col.accent?"var(--color-accent)":statusMeta(col.key==="needs"?"needs-test":col.key).stripe}"></i>
+        ${col.name}<span class="spacer"></span><span class="count num">${list.length}</span>
+      </header>
+      <div class="collist">
+        ${shown.length ? shown.map(cardHTML).join("")
+                       : '<div class="empty">nothing here</div>'}
+        ${col.key==="done"&&list.length>8?`<div class="empty">+${list.length-8} more closed</div>`:""}
+      </div>
+    </section>`;
+  }).join("")}</div>`;
+}
+
+function detailHTML(it){
+  if(!it) return "";
+  const m = statusMeta(it.status);
+  const stripe = it.published ? "var(--color-accent)" : m.stripe;
+  const impact = IMPACT_RANK[it.impact]===0?3:IMPACT_RANK[it.impact]===1?2:1;
+  const gate = it.status==="needs-test"
+    ? "Gate: this only clears via Confirm (wt confirm) — there is no raw “done”. Confirm when you have verified it in-game."
+    : it.status==="needs-decision" ? "Waiting on a design call only you can make."
+    : it.status==="needs-asset"    ? "Code is ready. The art, sprite or sound does not exist yet."
+    : "";
+  const actions = isMobile() ? "" : `<div class="dactions">
+      ${actionsFor(it.status).map(([label,target,kind])=>
+        `<button class="btn ${kind==="primary"?"btn-primary":""}" data-move="${esc(target)}">${esc(label)}</button>`).join("")}
+    </div>`;
+  return `<div class="dstripe" style="--stripe:${stripe}"></div>
+    <div class="dbody">
+      <div class="crow">
+        <span class="cid num">${esc(it.id)}</span>
+        <span class="cproj"><i class="dot" style="background:${PROJECT_DOT[it.project]||"var(--color-neutral-600)"}"></i>${esc(it.project)}</span>
+        <span class="tag">${esc(TYPE_SHORT[it.type]||it.type)}</span>
+        <span class="spacer"></span>
+        ${it.published?'<span class="tag tag-pub">Published</span>':""}
+        <span class="chip-status" style="background:${m.bg};color:${m.fg}">${esc(m.label)}</span>
+        <button class="btn btn-icon" data-close="1" aria-label="Close">✕</button>
+      </div>
+      <h3>${esc(it.title)}</h3>
+      ${it.status==="blocked"&&it.blocked_by.length?
+        `<div class="banner">Blocked by ${it.blocked_by.map(esc).join(", ")}</div>`:""}
+      <div class="dmeta">
+        <div><h6>Impact</h6><span class="meter"><i class="${impact>=1?"on":""}"></i><i class="${impact>=2?"on":""}"></i><i class="${impact>=3?"on":""}"></i></span></div>
+        <div><h6>Effort</h6><span class="num">${NEEDS.includes(it.status)?"— (yours now)":esc(it.effort)}</span></div>
+        <div><h6>Updated</h6><span class="num">${esc(it.updated)}</span></div>
+        <div><h6>Tags</h6>${it.tags.length?it.tags.map(t=>`<span class="tag">#${esc(t)}</span>`).join(" "):'<span class="text-muted">—</span>'}</div>
+      </div>
+      <div class="dtext">${it.body.split(/\n{2,}/).map(p=>`<p>${esc(p).replace(/\n/g,"<br>")}</p>`).join("")}</div>
+      ${gate?`<div class="gate">${esc(gate)}</div>`:""}
+      ${isMobile()?'<div class="banner">Read-only on mobile — moves and edits happen on the desktop board.</div>':""}
+    </div>${actions}`;
+}
+
+function captureHTML(){
+  const projects = Object.keys(PROJECT_DOT);
+  return `<h3>New Item</h3>
+    <p class="text-muted" style="font-size:12.5px">→ inbox/ · unnumbered, awaiting scoping by <code>wt</code></p>
+    <textarea class="input" id="cap-text" placeholder="What is the idea?"></textarea>
+    <div class="crow" style="flex-wrap:wrap;margin:var(--space-4) 0">
+      ${projects.map(p=>`<button class="chip" data-capproj="${esc(p)}" aria-pressed="false">
+        <i class="dot" style="background:${PROJECT_DOT[p]}"></i>${esc(p)}</button>`).join("")}
+    </div>
+    <div class="crow" style="margin:0">
+      <span class="spacer"></span>
+      <button class="btn btn-ghost" data-close="1">Cancel</button>
+      <button class="btn btn-primary" id="cap-go" disabled>Append to inbox</button>
+    </div>`;
+}
+
+function authHTML(){
+  return `<div class="center"><div class="panel">
+    <div class="brand" style="margin-bottom:var(--space-6)"><i></i>worktracker</div>
+    <p class="text-muted" style="font-size:13px">This page is public and holds no data. It reads your
+      <strong>private</strong> tracker directly from GitHub using a token stored only in this browser.</p>
+    <ol>
+      <li>Open <strong>GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens</strong></li>
+      <li><strong>Generate new token</strong>, resource owner <code>simpsonbm1</code></li>
+      <li>Repository access → <strong>Only select repositories</strong> → <code>worktracker</code></li>
+      <li>Repository permissions → <strong>Contents: Read and write</strong></li>
+      <li>Generate, copy, paste below</li>
+    </ol>
+    <input class="input" id="tok" type="password" placeholder="github_pat_… or ghp_…" autocomplete="off">
+    <div class="crow" style="margin-top:var(--space-4)">
+      <span class="text-muted" style="font-size:11.5px">Stored in localStorage on this device only. Revoke any time on GitHub.</span>
+      <span class="spacer"></span>
+      <button class="btn btn-primary" id="tok-go">Connect</button>
+    </div>
+    ${S.error?`<div class="err">${esc(S.error)}</div>`:""}
+  </div></div>`;
+}
+
+function mobileHTML(){
+  const items = visible();
+  const SEGMENTS = [
+    ["needs-you","Needs you", it=>NEEDS.includes(it.status)],
+    ["open","All open",       it=>!CLOSED.includes(it.status)],
+    ["scoped","Scoped",       it=>it.status==="scoped"],
+    ["in-progress","In progress", it=>it.status==="in-progress"]
+  ];
+  const seg = SEGMENTS.find(s=>s[0]===S.segment) || SEGMENTS[0];
+  const list = items.filter(seg[2]).sort(rank);
+
+  if(S.mobileTab==="capture") return `<div class="mlist">${captureHTML()}</div>`;
+  if(S.mobileView==="inbox") return `<div class="mlist">
+      <div class="crow"><button class="btn btn-ghost" data-mview="list">‹ Board</button>
+        <span class="spacer"></span></div>
+      <h3>Inbox <span class="count num">${S.inbox.length}</span></h3>
+      <p class="text-muted" style="font-size:12px">Raw captures · unnumbered, awaiting scoping by <code>wt</code>.</p>
+      ${S.inbox.length?S.inbox.map(n=>`<div>
+        <div class="crow" style="margin-bottom:4px">
+          <span class="text-muted" style="font-size:11px">${esc(n.when||n.name)}</span>
+          <span class="spacer"></span><span class="tag">Unscoped</span>
+          ${n.isNew?'<span class="tag tag-outline">New</span>':""}
+        </div>
+        <div class="inboxitem">${esc(n.text)}</div></div>`).join("")
+        :'<div class="empty">inbox empty</div>'}
+    </div>`;
+
+  return `<div style="padding:var(--space-4) var(--space-4) 0">
+      <h3 style="margin-bottom:0">${esc(seg[1])} <span class="count num">${list.length}</span></h3>
+      <div class="seg" style="margin:var(--space-4) 0">
+        ${SEGMENTS.map(s=>`<button class="seg-opt" data-seg="${s[0]}" aria-pressed="${s[0]===S.segment}">${s[1]}</button>`).join("")}
+      </div>
+    </div>
+    <div class="mlist ${S.segment==="needs-you"?"needs":""}">
+      ${list.length?list.map(cardHTML).join(""):'<div class="empty">nothing here</div>'}
+    </div>`;
+}
+
+function render(){
+  const app = document.getElementById("app");
+
+  if(!S.token){ app.innerHTML = authHTML(); wire(); return; }
+
+  const open = S.items.filter(i=>!CLOSED.includes(i.status)).length;
+  const needs = S.items.filter(i=>NEEDS.includes(i.status)).length;
+  const sel = S.items.find(i=>i.id===S.selected);
+  const mobile = isMobile();
+
+  const top = `<header class="topbar">
+    <div class="brand"><i></i>worktracker</div>
+    ${mobile?"":`<span class="text-muted num" style="font-size:12.5px">${open} open · ${needs} needs you</span>`}
+    <span class="spacer"></span>
+    ${mobile?"":`<input class="input" id="q" style="width:260px" placeholder="Search titles…" value="${esc(S.filters.query)}">`}
+    <button class="badge num" data-mview="inbox">Inbox ${S.inbox.length}</button>
+    ${mobile?"":'<button class="btn btn-primary" id="new">＋ New Item</button>'}
+    <button class="btn btn-icon" id="reload" title="Reload">${S.loading?"…":"↻"}</button>
+  </header>`;
+
+  const projects = [...new Set(S.items.map(i=>i.project))].sort();
+  const types = [...new Set(S.items.map(i=>i.type))].sort();
+  const filters = mobile ? "" : `<div class="filterbar">
+    <span class="flabel">Project</span>
+    ${projects.map(p=>`<button class="chip" data-fp="${esc(p)}" aria-pressed="${S.filters.projects.includes(p)}">
+      <i class="dot" style="background:${PROJECT_DOT[p]||"var(--color-neutral-600)"}"></i>${esc(p)}</button>`).join("")}
+    <span class="sep"></span><span class="flabel">Type</span>
+    ${types.map(t=>`<button class="chip" data-ft="${esc(t)}" aria-pressed="${S.filters.types.includes(t)}">${esc(t)}</button>`).join("")}
+    ${(S.filters.projects.length||S.filters.types.length||S.filters.query)
+      ? '<span class="spacer"></span><button class="btn btn-ghost" id="clear">clear</button>' : ""}
+  </div>`;
+
+  const body = S.error ? `<div class="center"><div class="panel">
+        <h3>Could not load</h3><div class="err">${esc(S.error)}</div>
+        <div class="crow" style="margin-top:var(--space-6)">
+          <button class="btn" id="reload2">Retry</button>
+          <button class="btn btn-ghost" id="forget">Use a different token</button></div>
+      </div></div>`
+    : S.loading && !S.items.length ? '<div class="center"><span class="text-muted">Loading…</span></div>'
+    : mobile ? mobileHTML() : boardHTML();
+
+  app.innerHTML = top + filters + body
+    + (mobile?`<nav class="tabbar">
+        <button class="tab" data-tab="read" aria-pressed="${S.mobileTab==="read"}">Board</button>
+        <button class="tab" data-tab="capture" aria-pressed="${S.mobileTab==="capture"}">New Item</button>
+      </nav>`:"")
+    + `<div class="backdrop ${sel||S.capture?"on":""}" data-close="1"></div>`
+    + (mobile
+        ? `<div class="sheet ${sel?"on":""}"><div class="handle"></div>${detailHTML(sel)}</div>`
+        : `<aside class="drawer ${sel?"on":""}">${detailHTML(sel)}</aside>`)
+    + `<div class="dialog ${S.capture?"on":""}">${S.capture?captureHTML():""}</div>`
+    + `<div class="toast ${S.toast?"on":""}"><i class="dot" style="background:var(--color-accent)"></i>${esc(S.toast)}</div>`;
+  wire();
+}
+
+let toastTimer;
+function toast(msg){
+  S.toast = msg; render();
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ S.toast=""; render(); }, 2600);
+}
+
+/* ── events ────────────────────────────────────────────────────────────── */
+let capProject = "";
+function wire(){
+  const $ = s => document.querySelector(s);
+  const on = (sel,ev,fn)=> document.querySelectorAll(sel).forEach(el=>el.addEventListener(ev,fn));
+
+  const tok = $("#tok");
+  if(tok){
+    const go = ()=>{ const v=tok.value.trim(); if(!v) return;
+      S.token=v; localStorage.setItem(LS.tok,v); S.error=""; loadAll(); };
+    $("#tok-go").onclick = go;
+    tok.onkeydown = e => { if(e.key==="Enter") go(); };
+    tok.focus();
+    return;
+  }
+
+  const reload = ()=>{ localStorage.removeItem(LS.cache); loadAll(); };
+  if($("#reload"))  $("#reload").onclick = reload;
+  if($("#reload2")) $("#reload2").onclick = reload;
+  if($("#forget"))  $("#forget").onclick = ()=>{
+    localStorage.removeItem(LS.tok); localStorage.removeItem(LS.cache);
+    S.token=""; S.error=""; render();
+  };
+  if($("#new")) $("#new").onclick = ()=>{ S.capture=true; capProject=""; render(); };
+
+  const q = $("#q");
+  if(q) q.oninput = e => { S.filters.query = e.target.value;
+    const c = document.querySelector(".board"); const pos = c?c.scrollLeft:0;
+    render(); const c2 = document.querySelector(".board"); if(c2) c2.scrollLeft = pos;
+    const q2 = document.querySelector("#q"); if(q2){ q2.focus(); q2.setSelectionRange(q2.value.length,q2.value.length); } };
+
+  on("[data-fp]","click", e=>{ const p=e.currentTarget.dataset.fp; const a=S.filters.projects;
+    const i=a.indexOf(p); i<0?a.push(p):a.splice(i,1); render(); });
+  on("[data-ft]","click", e=>{ const t=e.currentTarget.dataset.ft; const a=S.filters.types;
+    const i=a.indexOf(t); i<0?a.push(t):a.splice(i,1); render(); });
+  if($("#clear")) $("#clear").onclick = ()=>{ S.filters={projects:[],types:[],query:""}; render(); };
+
+  on("[data-id]","click", e=>{ S.selected = e.currentTarget.dataset.id; render(); });
+  on("[data-close]","click", ()=>{ S.selected=null; S.capture=false; render(); });
+  on("[data-move]","click", e=>{
+    const it = S.items.find(i=>i.id===S.selected); if(it) moveItem(it, e.currentTarget.dataset.move);
+  });
+  on("[data-seg]","click", e=>{ S.segment = e.currentTarget.dataset.seg; render(); });
+  on("[data-tab]","click", e=>{ S.mobileTab = e.currentTarget.dataset.tab; S.mobileView="list"; render(); });
+  on("[data-mview]","click", e=>{ S.mobileView = e.currentTarget.dataset.mview;
+    S.mobileTab="read"; render(); });
+
+  const capText = $("#cap-text"), capGo = $("#cap-go");
+  if(capText && capGo){
+    const sync = ()=>{ capGo.disabled = !capText.value.trim(); };
+    capText.oninput = sync; sync();
+    document.querySelectorAll("[data-capproj]").forEach(b=>{
+      b.setAttribute("aria-pressed", String(b.dataset.capproj===capProject));
+      b.onclick = ()=>{ capProject = b.dataset.capproj===capProject?"":b.dataset.capproj;
+        document.querySelectorAll("[data-capproj]").forEach(x=>
+          x.setAttribute("aria-pressed", String(x.dataset.capproj===capProject))); };
+    });
+    capGo.onclick = ()=> appendCapture(capText.value.trim(), capProject);
+  }
+}
+
+document.addEventListener("keydown", e=>{
+  if(e.key==="Escape" && (S.selected||S.capture)){ S.selected=null; S.capture=false; render(); }
+});
+let rt; window.addEventListener("resize", ()=>{ clearTimeout(rt); rt=setTimeout(render,150); });
+
+if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
+render();
+if(S.token) loadAll();
+</script>
+</body>
+</html>
