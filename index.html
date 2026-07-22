@@ -340,11 +340,22 @@ function saveBlobCache(c){
 async function loadAll(){
   S.loading = true; S.error=""; render();
   try{
-    // no-store on the TREE only: it is the freshness-critical call, and GitHub sends
-    // a short max-age that a resumed session would otherwise serve stale from cache.
-    // Blobs are immutable per sha, so those stay cacheable.
-    const tree = await gh(`/repos/${CFG.owner}/${CFG.repo}/git/trees/${CFG.branch}?recursive=1`,
-                          { cache:"no-store" });
+    // The tree is the freshness-critical call and GitHub sends
+    // `Cache-Control: private, max-age=60` on it — so for a full minute after any
+    // load, a refresh is served from the browser's disk cache without touching the
+    // network, and an item just captured is invisible. That is a real reported bug,
+    // not a hypothetical.
+    //
+    // Belt AND braces: `no-store` is the correct mechanism, but mobile browsers honour
+    // it inconsistently, so the URL also carries a cache-buster. A changing URL cannot
+    // hit a cache entry no matter how the browser feels about the header. (Verified the
+    // extra param does not perturb the endpoint: same tree sha, same 69 entries.)
+    //
+    // Blobs deliberately stay cacheable — they are immutable per sha (max-age=86400),
+    // which is what makes reloads cheap.
+    const tree = await gh(
+      `/repos/${CFG.owner}/${CFG.repo}/git/trees/${CFG.branch}?recursive=1&_=${Date.now()}`,
+      { cache:"no-store" });
     const wanted = tree.tree.filter(n =>
       n.type==="blob" && n.path.endsWith(".md") &&
       (n.path.startsWith("items/") || n.path.startsWith("inbox/")));
