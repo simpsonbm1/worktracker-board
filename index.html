@@ -284,13 +284,24 @@ const S = {
   // Capture form lives in state, not in the DOM. render() rebuilds everything via
   // innerHTML, so anything held only in an input is destroyed by any re-render -
   // a toast firing, a breakpoint change, the mobile keyboard resizing the viewport.
-  captureText:"", captureProject:""
+  captureText:"", captureProject:"",
+  lastLoad:0
 };
 const isMobile = ()=> window.matchMedia("(max-width:820px)").matches;
 
 /* ── utilities ─────────────────────────────────────────────────────────── */
 const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const today = ()=> new Date().toISOString().slice(0,10);
+
+/* How old the displayed data is. Shown because stale-and-silent is worse than
+   stale-and-labelled - an item captured elsewhere is invisible until a refetch. */
+function agoText(){
+  if(!S.lastLoad) return "";
+  const s = Math.floor((Date.now() - S.lastLoad)/1000);
+  if(s < 45) return "just now";
+  if(s < 3600) return Math.round(s/60) + "m ago";
+  return Math.round(s/3600) + "h ago";
+}
 
 function b64encode(str){
   const bytes = new TextEncoder().encode(str);
@@ -329,7 +340,11 @@ function saveBlobCache(c){
 async function loadAll(){
   S.loading = true; S.error=""; render();
   try{
-    const tree = await gh(`/repos/${CFG.owner}/${CFG.repo}/git/trees/${CFG.branch}?recursive=1`);
+    // no-store on the TREE only: it is the freshness-critical call, and GitHub sends
+    // a short max-age that a resumed session would otherwise serve stale from cache.
+    // Blobs are immutable per sha, so those stay cacheable.
+    const tree = await gh(`/repos/${CFG.owner}/${CFG.repo}/git/trees/${CFG.branch}?recursive=1`,
+                          { cache:"no-store" });
     const wanted = tree.tree.filter(n =>
       n.type==="blob" && n.path.endsWith(".md") &&
       (n.path.startsWith("items/") || n.path.startsWith("inbox/")));
@@ -354,7 +369,7 @@ async function loadAll(){
     S.inbox = wanted.filter(n=>n.path.startsWith("inbox/"))
                     .map(n => parseInbox(cache[n.sha], n.path))
                     .sort((a,b)=> b.name.localeCompare(a.name));
-    S.loading = false; render();
+    S.loading = false; S.lastLoad = Date.now(); render();
   }catch(e){
     S.loading=false;
     S.error = e.status===401 ? "Token rejected (401). It may be expired or lack Contents access."
@@ -721,6 +736,7 @@ function render(){
     ${mobile?"":`<span class="text-muted num" style="font-size:12.5px">${open} open · ${needs} needs you</span>`}
     <span class="spacer"></span>
     ${mobile?"":`<input class="input" id="q" style="width:260px" placeholder="Search titles…" value="${esc(S.filters.query)}">`}
+    <span class="text-muted" style="font-size:11px">${S.loading?"syncing…":esc(agoText())}</span>
     <button class="badge num" data-mview="inbox">Inbox ${S.inbox.length}</button>
     ${mobile?"":'<button class="btn btn-primary" id="new">＋ New Item</button>'}
     <button class="btn btn-icon" id="reload" title="Reload">${S.loading?"…":"↻"}</button>
@@ -846,6 +862,24 @@ window.addEventListener("resize", ()=>{
     if(now !== lastMobile){ lastMobile = now; render(); }
   }, 150);
 });
+
+/* Refetch when the app returns to the foreground.
+   A phone PWA is resumed far more often than it is cold-started, and loadAll() only
+   ran on cold start - so an item captured on one device could sit invisible on
+   another for hours. Guarded by a staleness window so tabbing back and forth does
+   not hammer the API. Never fires mid-capture: a reload would discard the draft. */
+const REFRESH_AFTER_MS = 30_000;
+function refreshIfStale(){
+  if(!S.token || S.loading) return;
+  if(S.capture || S.mobileTab === "capture") return;
+  if(Date.now() - S.lastLoad < REFRESH_AFTER_MS) return;
+  loadAll();
+}
+document.addEventListener("visibilitychange", ()=>{
+  if(document.visibilityState === "visible") refreshIfStale();
+});
+window.addEventListener("focus", refreshIfStale);
+window.addEventListener("pageshow", refreshIfStale);   // bfcache restore
 
 if("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 render();
