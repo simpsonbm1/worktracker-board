@@ -542,11 +542,15 @@ function parseItem(raw, path, sha){
 }
 function parseInbox(raw, path){
   const name = path.replace(/^inbox\//,"").replace(/\.md$/,"");
-  const lines = String(raw||"").split(/\r?\n/);
-  const text = lines.filter(l=>l.trim() && !/^(captured|source):/.test(l)).join("\n").trim();
-  const src = (lines.find(l=>/^source:/.test(l))||"").replace(/^source:\s*/,"");
-  const when = (lines.find(l=>/^captured:/.test(l))||"").replace(/^captured:\s*/,"");
-  return { path, name, text, source:src, when };
+  // Strip a leading BOM: notes written by older wt versions carry one, and it stops
+  // /^captured:/ matching - which showed the header as part of the note text.
+  const lines = String(raw||"").replace(/^﻿/,"").split(/\r?\n/);
+  const field = k => (lines.find(l=>new RegExp("^"+k+":").test(l))||"").replace(new RegExp("^"+k+":\\s*"),"");
+  const text = lines.filter(l=>l.trim() && !/^(captured|source|project):/.test(l)).join("\n").trim();
+  const src = field("source");
+  // Legacy form: project smuggled into source as "board (askamods)".
+  const legacy = (src.match(/\(([a-z0-9-]+)\)/)||[])[1] || "";
+  return { path, name, text, source:src, when:field("captured"), project:field("project")||legacy };
 }
 
 /* ── writing: in-place line edits ──────────────────────────────────────────
@@ -648,10 +652,15 @@ async function appendCapture(text, project){
                    .replace(/^-|-$/g,"").slice(0,50) || "capture";
   const path = `inbox/${stamp}-${slug}.md`;
   const when = new Date().toISOString().slice(0,16).replace("T"," ");
-  const content = `captured: ${when} UTC\nsource: board${project?" ("+project+")":""}\n\n${text}\n`;
+  // project gets its OWN field. It used to be smuggled into `source:` as
+  // "board (askamods)", where wt inbox filtered it out of the display, wt scope
+  // ignored it, and the user's chip selection silently did nothing.
+  const content = `captured: ${when} UTC\nsource: board`
+                + (project ? `\nproject: ${project}` : "")
+                + `\n\n${text}\n`;
   try{
     await putFile(path, content, undefined, `board: capture ${path.replace("inbox/","")}`);
-    S.inbox.unshift({ path, name:path.replace(/^inbox\/|\.md$/g,""), text, source:"board", when, isNew:true });
+    S.inbox.unshift({ path, name:path.replace(/^inbox\/|\.md$/g,""), text, source:"board", when, project, isNew:true });
     S.capture = false;
     S.captureText = ""; S.captureProject = "";   // else the form reopens pre-filled
     if(S.mobileTab === "capture") S.mobileTab = "read";
@@ -850,6 +859,7 @@ function mobileHTML(){
       <p class="text-muted" style="font-size:12px">Raw captures · unnumbered, awaiting scoping by <code>wt</code>.</p>
       ${S.inbox.length?S.inbox.map(n=>`<div>
         <div class="crow" style="margin-bottom:4px">
+          ${n.project?`<span class="cproj"><i class="dot" style="background:${PROJECT_DOT[n.project]||"var(--color-neutral-600)"}"></i>${esc(n.project)}</span>`:""}
           <span class="text-muted" style="font-size:11px">${esc(n.when||n.name)}</span>
           <span class="spacer"></span><span class="tag">Unscoped</span>
           ${n.isNew?'<span class="tag tag-outline">New</span>':""}
