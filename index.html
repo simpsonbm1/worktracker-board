@@ -165,6 +165,26 @@ textarea.input{min-height:110px;resize:vertical;line-height:1.5}
   color:var(--color-neutral-600);margin:0 0 4px;font-weight:500}
 .dtext{font-size:13.5px;line-height:1.7;max-width:640px;color:var(--color-neutral-200)}
 .dtext p{margin:0 0 var(--space-4)}
+.dtext h4,.dtext h5,.dtext h6{font-size:13px;letter-spacing:0;color:var(--color-neutral-100);
+  margin:var(--space-6) 0 var(--space-2);text-transform:none}
+.dtext h4:first-child,.dtext h5:first-child{margin-top:0}
+.dtext ul,.dtext ol{margin:0 0 var(--space-4);padding-left:20px}
+.dtext li{margin-bottom:var(--space-2)}
+.dtext strong{color:var(--color-neutral-100);font-weight:600}
+.dtext code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;
+  background:var(--color-neutral-900);padding:1px 5px;border-radius:3px;
+  color:var(--color-accent-200);word-break:break-word}
+.dtext pre{background:var(--color-neutral-900);border:1px solid var(--color-neutral-800);
+  border-radius:var(--radius-sm);padding:var(--space-3);overflow-x:auto;margin:0 0 var(--space-4)}
+.dtext pre code{background:none;padding:0;color:var(--color-neutral-200);font-size:11.5px}
+.dtext a{color:var(--color-accent-300)}
+/* Tables scroll inside their own box; the drawer itself must never scroll sideways. */
+.dtext table{display:block;overflow-x:auto;border-collapse:collapse;
+  margin:0 0 var(--space-4);font-size:12px;max-width:100%}
+.dtext th,.dtext td{border:1px solid var(--color-neutral-800);
+  padding:var(--space-2) var(--space-3);text-align:left;vertical-align:top}
+.dtext th{background:var(--color-neutral-900);color:var(--color-neutral-100);
+  font-weight:500;white-space:nowrap}
 .gate{border:1px solid var(--color-accent-800);background:color-mix(in srgb,var(--color-accent) 8%,transparent);
   border-radius:var(--radius-md);padding:var(--space-4);font-size:12.5px;
   color:var(--color-accent-200);margin:var(--space-6) 0}
@@ -182,6 +202,10 @@ textarea.input{min-height:110px;resize:vertical;line-height:1.5}
 .dialog.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%)}
 
 /* ── toast ── */
+.updatebar{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);z-index:70;
+  font:inherit;font-size:12.5px;padding:var(--space-3) var(--space-6);cursor:pointer;
+  background:var(--color-accent-800);color:var(--color-accent-100);
+  border:1px solid var(--color-accent-600);border-radius:999px;box-shadow:var(--shadow-md)}
 .toast{position:fixed;left:50%;bottom:26px;transform:translate(-50%,8px);z-index:60;
   display:flex;align-items:center;gap:var(--space-3);font-size:12.5px;
   background:var(--color-surface);border:1px solid var(--color-neutral-700);
@@ -288,13 +312,98 @@ const S = {
   // innerHTML, so anything held only in an input is destroyed by any re-render -
   // a toast firing, a breakpoint change, the mobile keyboard resizing the viewport.
   captureText:"", captureProject:"",
-  lastLoad:0
+  lastLoad:0, updateReady:false
 };
 const isMobile = ()=> window.matchMedia("(max-width:820px)").matches;
 
 /* ── utilities ─────────────────────────────────────────────────────────── */
 const esc = s => String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const today = ()=> new Date().toISOString().slice(0,10);
+
+/* ── markdown ──────────────────────────────────────────────────────────────
+   Item bodies are markdown, hard-wrapped at ~80 columns because they are written
+   in an editor. Rendering them as plain text with every newline turned into <br> kept
+   the author's wrap width, which is meaningless on a phone: breaks land mid
+   sentence and headings and emphasis show as literal ## and **.
+
+   In markdown a single newline inside a paragraph is a SOFT wrap and means a
+   space; only a blank line starts a new paragraph. That distinction is the whole
+   fix for the reported "random line breaks". */
+function mdInline(s){
+  return esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g,
+             '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+}
+
+function renderMarkdown(src){
+  const lines = String(src||"").replace(/\r\n?/g,"\n").split("\n");
+  const out = [];
+  const isUL = l => /^\s*[-*]\s+/.test(l);
+  const isOL = l => /^\s*\d+[.)]\s+/.test(l);
+  const isHead = l => /^#{1,6}\s/.test(l);
+  let i = 0;
+
+  while(i < lines.length){
+    const line = lines[i];
+
+    if(/^```/.test(line)){                                   // fenced code
+      const buf = []; i++;
+      while(i < lines.length && !/^```/.test(lines[i])){ buf.push(lines[i]); i++; }
+      i++;
+      out.push(`<pre><code>${esc(buf.join("\n"))}</code></pre>`);
+      continue;
+    }
+
+    const h = line.match(/^(#{1,6})\s+(.*)$/);               // heading
+    if(h){
+      const lvl = Math.min(6, h[1].length + 2);              // ## renders as h4
+      out.push(`<h${lvl}>${mdInline(h[2])}</h${lvl}>`);
+      i++; continue;
+    }
+
+    // table: a row of pipes followed by a |---|---| separator
+    if(/\|/.test(line) && /^[\s|:-]+$/.test(lines[i+1]||"") && /\|/.test(lines[i+1]||"")){
+      const rows = [];
+      while(i < lines.length && /\|/.test(lines[i])){ rows.push(lines[i]); i++; }
+      const cells = r => r.replace(/^\s*\||\|\s*$/g,"").split("|").map(c=>c.trim());
+      const head = cells(rows[0]);
+      const body = rows.slice(2).map(cells);
+      out.push('<table><thead><tr>' + head.map(c=>`<th>${mdInline(c)}</th>`).join("") +
+               '</tr></thead><tbody>' +
+               body.map(r=>'<tr>'+r.map(c=>`<td>${mdInline(c)}</td>`).join("")+'</tr>').join("") +
+               '</tbody></table>');
+      continue;
+    }
+
+    if(isUL(line) || isOL(line)){                            // list
+      const ordered = isOL(line);
+      const items = [];
+      while(i < lines.length && (isUL(lines[i]) || isOL(lines[i]) || /^\s{2,}\S/.test(lines[i]))){
+        if(isUL(lines[i]) || isOL(lines[i])) {
+          items.push(lines[i].replace(/^\s*(?:[-*]|\d+[.)])\s+/, ""));
+        } else if(items.length) {
+          items[items.length-1] += " " + lines[i].trim();     // wrapped continuation
+        }
+        i++;
+      }
+      const tag = ordered ? "ol" : "ul";
+      out.push(`<${tag}>` + items.map(t=>`<li>${mdInline(t)}</li>`).join("") + `</${tag}>`);
+      continue;
+    }
+
+    if(!line.trim()){ i++; continue; }
+
+    const buf = [];                                          // paragraph
+    while(i < lines.length && lines[i].trim() && !/^```/.test(lines[i]) &&
+          !isHead(lines[i]) && !isUL(lines[i]) && !isOL(lines[i])){
+      buf.push(lines[i].trim()); i++;
+    }
+    out.push(`<p>${mdInline(buf.join(" "))}</p>`);            // soft wraps become spaces
+  }
+  return out.join("");
+}
 
 /* When the SERVED PAGE was built, from document.lastModified - i.e. which deploy this
    device is actually running. Shown because "I don't see the new feature" is otherwise
@@ -673,7 +782,7 @@ function detailHTML(it){
         <div><h6>Updated</h6><span class="num">${esc(it.updated)}</span></div>
         <div><h6>Tags</h6>${it.tags.length?it.tags.map(t=>`<span class="tag">#${esc(t)}</span>`).join(" "):'<span class="text-muted">—</span>'}</div>
       </div>
-      <div class="dtext">${it.body.split(/\n{2,}/).map(p=>`<p>${esc(p).replace(/\n/g,"<br>")}</p>`).join("")}</div>
+      <div class="dtext">${renderMarkdown(it.body)}</div>
       ${gate?`<div class="gate">${esc(gate)}</div>`:""}
       ${isMobile()?'<div class="banner">Read-only on mobile — moves and edits happen on the desktop board.</div>':""}
     </div>${actions}`;
@@ -807,7 +916,8 @@ function render(){
         ? `<div class="sheet ${sel?"on":""}"><div class="handle"></div>${detailHTML(sel)}</div>`
         : `<aside class="drawer ${sel?"on":""}">${detailHTML(sel)}</aside>`)
     + `<div class="dialog ${S.capture?"on":""}">${S.capture?captureHTML():""}</div>`
-    + `<div class="toast ${S.toast?"on":""}"><i class="dot" style="background:var(--color-accent)"></i>${esc(S.toast)}</div>`;
+    + `<div class="toast ${S.toast?"on":""}"><i class="dot" style="background:var(--color-accent)"></i>${esc(S.toast)}</div>`
+    + (S.updateReady ? `<button class="updatebar" id="do-update">New version available — tap to reload</button>` : "");
   wire();
 }
 
@@ -840,6 +950,7 @@ function wire(){
     localStorage.removeItem(LS.tok); localStorage.removeItem(LS.cache);
     S.token=""; S.error=""; render();
   };
+  if($("#do-update")) $("#do-update").onclick = ()=> location.reload();
   if($("#new")) $("#new").onclick = ()=>{
     S.capture=true; S.captureText=""; S.captureProject=""; render();
   };
@@ -923,6 +1034,20 @@ if("serviceWorker" in navigator){
   navigator.serviceWorker.register("sw.js", { updateViaCache:"none" })
     .then(reg => reg.update())
     .catch(()=>{});
+
+  /* When a new worker takes over, the JS already running is still the OLD build - the
+     page must reload to actually become the new version. Say so instead of leaving the
+     user to infer it: a deployed feature silently not appearing is indistinguishable
+     from a broken one, which has now cost real time twice. */
+  navigator.serviceWorker.addEventListener("controllerchange", ()=>{
+    S.updateReady = true; render();
+  });
+  /* Check again on resume - a phone PWA can sit suspended for hours. */
+  document.addEventListener("visibilitychange", ()=>{
+    if(document.visibilityState === "visible"){
+      navigator.serviceWorker.getRegistration().then(r => r && r.update()).catch(()=>{});
+    }
+  });
 }
 render();
 if(S.token) loadAll();
