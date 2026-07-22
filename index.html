@@ -261,6 +261,9 @@ const TYPE_SHORT = { feature:"FEAT", bug:"BUG", idea:"IDEA", research:"RSCH",
 /* Status → intent. Colour follows intent, not the literal status. */
 function statusMeta(s){
   switch(s){
+    // 'new' = an approach has been proposed, not yet agreed. Held deliberately neutral:
+    // it is not an alarm, it is a queue of things to read.
+    case "new":            return {stripe:"var(--color-neutral-500)", bg:"var(--color-neutral-800)", fg:"var(--color-neutral-100)", label:"New"};
     case "scoped":         return {stripe:"oklch(.62 .08 250)",  bg:"oklch(.33 .045 250)", fg:"oklch(.85 .07 250)", label:"Scoped"};
     case "in-progress":    return {stripe:"oklch(.67 .11 235)",  bg:"oklch(.35 .06 235)",  fg:"oklch(.86 .09 235)", label:"In progress"};
     case "blocked":        return {stripe:"oklch(.62 .10 28)",   bg:"oklch(.34 .06 28)",   fg:"oklch(.83 .09 28)",  label:"Blocked"};
@@ -471,6 +474,12 @@ async function commitItem(item, newRaw, message){
 /* ── gate-aware transitions (mirrors the CLI gates) ────────────────────── */
 function actionsFor(st){
   switch(st){
+    // 'new' clears only via Approve - the same shape as the needs-test gate. The point
+    // is that the author cannot promote their own proposal by asserting it is fine.
+    // Approve only. Rejecting a proposal means cancelling it with a reason, and the
+    // board has nowhere to collect a reason - so that stays a CLI operation rather
+    // than a button that half-works.
+    case "new":            return [["✓ Approve","scoped","primary"]];
     case "scoped":         return [["Start work","in-progress","primary"]];
     case "in-progress":    return [["Send to test","needs-test","primary"],["Block","blocked",""]];
     case "blocked":        return [["Unblock","scoped","primary"]];
@@ -589,6 +598,7 @@ function cardHTML(it){
 }
 
 const COLUMNS = [
+  {key:"new",         name:"New",         match:it=>it.status==="new"},
   {key:"scoped",      name:"Scoped",      match:it=>it.status==="scoped"},
   {key:"in-progress", name:"In progress", match:it=>it.status==="in-progress"},
   {key:"blocked",     name:"Blocked",     match:it=>it.status==="blocked"},
@@ -621,7 +631,9 @@ function detailHTML(it){
   const m = statusMeta(it.status);
   const stripe = it.published ? "var(--color-accent)" : m.stripe;
   const impact = IMPACT_RANK[it.impact]===0?3:IMPACT_RANK[it.impact]===1?2:1;
-  const gate = it.status==="needs-test"
+  const gate = it.status==="new"
+    ? "An approach has been proposed but not agreed. Approve to move it into the ready queue, or send feedback. Until then it will not appear as startable work."
+    : it.status==="needs-test"
     ? "Gate: this only clears via Confirm (wt confirm) — there is no raw “done”. Confirm when you have verified it in-game."
     : it.status==="needs-decision" ? "Waiting on a design call only you can make."
     : it.status==="needs-asset"    ? "Code is ready. The art, sprite or sound does not exist yet."
@@ -658,7 +670,7 @@ function detailHTML(it){
 
 function captureHTML(){
   const projects = Object.keys(PROJECT_DOT);
-  return `<h3>New Item</h3>
+  return `<h3>Create Item</h3>
     <p class="text-muted" style="font-size:12.5px">→ inbox/ · unnumbered, awaiting scoping by <code>wt</code></p>
     <textarea class="input" id="cap-text" placeholder="What is the idea?">${esc(S.captureText)}</textarea>
     <div class="crow" style="flex-wrap:wrap;margin:var(--space-4) 0">
@@ -749,7 +761,7 @@ function render(){
     ${mobile?"":`<input class="input" id="q" style="width:260px" placeholder="Search titles…" value="${esc(S.filters.query)}">`}
     <span class="text-muted" style="font-size:11px">${S.loading?"syncing…":esc(agoText())}</span>
     <button class="badge num" data-mview="inbox">Inbox ${S.inbox.length}</button>
-    ${mobile?"":'<button class="btn btn-primary" id="new">＋ New Item</button>'}
+    ${mobile?"":'<button class="btn btn-primary" id="new">＋ Create Item</button>'}
     <button class="btn btn-icon" id="reload" title="Reload">${S.loading?"…":"↻"}</button>
   </header>`;
 
@@ -777,7 +789,7 @@ function render(){
   app.innerHTML = top + filters + body
     + (mobile?`<nav class="tabbar">
         <button class="tab" data-tab="read" aria-pressed="${S.mobileTab==="read"}">Board</button>
-        <button class="tab" data-tab="capture" aria-pressed="${S.mobileTab==="capture"}">New Item</button>
+        <button class="tab" data-tab="capture" aria-pressed="${S.mobileTab==="capture"}">Create Item</button>
       </nav>`:"")
     + `<div class="backdrop ${sel||S.capture?"on":""}" data-close="1"></div>`
     + (mobile
