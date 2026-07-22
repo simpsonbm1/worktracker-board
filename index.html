@@ -828,8 +828,13 @@ function authHTML(){
 
 function mobileHTML(){
   const items = visible();
+  /* Mobile has no columns - this segmented filter IS the column set. Every desktop
+     column therefore needs a segment here, or that status is unreachable on the phone
+     except by scrolling "All open". Adding the New column without adding this segment
+     is exactly how `new` items became invisible on mobile. */
   const SEGMENTS = [
     ["needs-you","Needs you", it=>NEEDS.includes(it.status)],
+    ["new","New",             it=>it.status==="new"],
     ["open","All open",       it=>!CLOSED.includes(it.status)],
     ["scoped","Scoped",       it=>it.status==="scoped"],
     ["in-progress","In progress", it=>it.status==="in-progress"]
