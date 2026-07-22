@@ -31,10 +31,15 @@ self.addEventListener("fetch", e => {
   if (url.origin !== self.location.origin) return;
   if (e.request.method !== "GET") return;
 
-  // Network-first for the shell so a deploy is picked up promptly, falling back
-  // to cache when offline.
+  // Network-first for the shell, with `cache: "no-cache"` to force revalidation
+  // against the server rather than trusting the browser's copy.
+  //
+  // GitHub Pages sends `Cache-Control: max-age=600` on the shell, so a plain fetch()
+  // is served from the local disk cache for ten minutes after any load - a deploy
+  // silently does not arrive, and the page shows no sign of being stale. "no-cache"
+  // still uses the ETag, so an unchanged file costs a 304 rather than a re-download.
   e.respondWith(
-    fetch(e.request)
+    fetch(e.request, { cache: "no-cache" })
       .then(res => {
         const copy = res.clone();
         caches.open(VERSION).then(c => c.put(e.request, copy)).catch(() => {});
