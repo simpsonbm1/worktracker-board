@@ -962,7 +962,12 @@ function detailHTML(it){
     : it.status==="needs-decision" ? "Waiting on a design call only you can make."
     : it.status==="needs-asset"    ? "Code is ready. The art, sprite or sound does not exist yet."
     : "";
-  const actions = isMobile() ? "" : `<div class="dactions">
+  /* An archived item gets NO action buttons. Every action resolves the selection out of
+     S.items, which no longer holds it, so the buttons would render and silently do
+     nothing - worse than absent. Reopening an archived item means moving the file back,
+     which is `wt move` (it un-archives) rather than a board write. */
+  const archived = String(it.path||"").startsWith("archive/");
+  const actions = (isMobile() || archived) ? "" : `<div class="dactions">
       ${actionsFor(it.status).map(([label,target,kind])=>
         `<button class="btn ${kind==="primary"?"btn-primary":""}" data-move="${esc(target)}">${esc(label)}</button>`).join("")}
     </div>`;
@@ -988,7 +993,8 @@ function detailHTML(it){
       </div>
       <div class="dtext">${renderMarkdown(it.body)}</div>
       ${gate?`<div class="gate">${esc(gate)}</div>`:""}
-      ${isMobile()?'<div class="banner">Read-only on mobile — moves and edits happen on the desktop board.</div>':""}
+      ${archived?'<div class="banner">Archived — read-only here. <code>wt move</code> brings it back to items/ if it needs reopening.</div>'
+        :isMobile()?'<div class="banner">Read-only on mobile — moves and edits happen on the desktop board.</div>':""}
     </div>${actions}`;
 }
 
@@ -1163,7 +1169,10 @@ function render(){
 
   const open = S.items.filter(i=>!CLOSED.includes(i.status)).length;
   const needs = S.items.filter(i=>NEEDS.includes(i.status)).length;
-  const sel = S.items.find(i=>i.id===S.selected);
+  /* Resolve across BOTH sets. An archived item is still selectable - its body holds the
+     scoping notes and the why-cancelled reason, which is the main thing anyone opens the
+     archive to read. Looking only in S.items made archive tiles unclickable. */
+  const sel = S.items.find(i=>i.id===S.selected) || S.archive.find(i=>i.id===S.selected);
   const mobile = isMobile();
 
   const top = `<header class="topbar">
@@ -1263,6 +1272,7 @@ function wire(){
   if($("#clear")) $("#clear").onclick = ()=>{ S.filters={projects:[],types:[],query:""}; render(); };
 
   on("[data-id]","click", e=>{ S.selected = e.currentTarget.dataset.id; render(); });
+  on("[data-arch]","click", e=>{ S.selected = e.currentTarget.dataset.arch; render(); });
 
   /* Preserve the board's horizontal scroll, as the search box does. Without it,
      collapsing a column you had scrolled to snaps the board back to the far left -
