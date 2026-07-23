@@ -348,7 +348,10 @@ function hashName(name){
 let _dotCache = { key:null, map:null };
 function dotMap(){
   const names = [...new Set((S.items||[]).map(i=>i.project).filter(Boolean))].sort();
-  const key = names.join(" ");
+  /* "|" cannot occur in a project key (wt enforces ^[a-z0-9][a-z0-9-]*$), so this is an
+     unambiguous separator. Do not use "\0" here - a literal NUL makes the whole file
+     read as binary to grep, diff and code review while still working in the browser. */
+  const key = names.join("|");
   if(_dotCache.key === key) return _dotCache.map;
   const map = {}, used = new Set();
   for(const n of names){
@@ -396,6 +399,12 @@ function statusMeta(s){
 const S = {
   token:localStorage.getItem(LS.tok)||"",
   items:[], inbox:[], loading:false, error:"",
+  // Archive (0040) is loaded ON DEMAND and never as part of the normal board load.
+  // Moving closed items out of items/ exists to stop a year of them being fetched on
+  // every cold start; pulling them back in eagerly here would hand that saving straight
+  // back. archiveLoaded distinguishes "not fetched yet" from "fetched and genuinely
+  // empty", which otherwise both look like [].
+  archive:[], archiveLoaded:false, archiveLoading:false, archiveError:"",
   filters:{projects:[],types:[],query:""},
   selected:null, capture:false, toast:"",
   mobileTab:"read", segment:"needs-you", mobileView:"list",
@@ -978,6 +987,79 @@ function authHTML(){
   </div></div>`;
 }
 
+/* Archived items (0040). Fetched only when the archive is actually opened - see the
+   note on S.archive. The tree call is recursive and already lists archive/ paths, so
+   discovery is free; only the blobs cost anything, and they are cached by sha like
+   every other blob. */
+async function loadArchive(){
+  if(S.archiveLoading) return;
+  S.archiveLoading = true; S.archiveError = ""; render();
+  try{
+    const tree = await gh(
+      `/repos/${CFG.owner}/${CFG.repo}/git/trees/${CFG.branch}?recursive=1&_=${Date.now()}`,
+      { cache:"no-store" });
+    const wanted = tree.tree.filter(n =>
+      n.type==="blob" && n.path.endsWith(".md") && n.path.startsWith("archive/"));
+    const cache = blobCache();
+    const QUEUE = wanted.filter(n => !cache[n.sha]);
+    await Promise.all(Array.from({length:Math.min(6,QUEUE.length)}, async ()=>{
+      while(QUEUE.length){
+        const n = QUEUE.shift();
+        const blob = await gh(`/repos/${CFG.owner}/${CFG.repo}/git/blobs/${n.sha}`);
+        cache[n.sha] = b64decode(blob.content);
+      }
+    }));
+    saveBlobCache(cache);
+    S.archive = wanted.map(n => parseItem(cache[n.sha], n.path, n.sha)).filter(Boolean)
+      /* Newest first: the archive is browsed to answer "what did we do / did we already
+         try this", and that question is almost always about the recent past. */
+      .sort((a,b)=> String(b.closed||"").localeCompare(String(a.closed||"")));
+    S.archiveLoaded = true;
+  }catch(e){
+    S.archiveError = e.status===403
+      ? "Forbidden (403) — rate limited, or the token lacks Contents permission."
+      : "Archive load failed: "+e.message;
+  }
+  S.archiveLoading = false; render();
+}
+
+function archiveRowHTML(it){
+  return `<button class="card" data-arch="${esc(it.id)}">
+    <div class="crow">
+      <span class="cid num">${esc(it.id)}</span>
+      <span class="cproj"><i class="dot" style="background:${projectDot(it.project)}"></i>${esc(projectLabel(it.project))}</span>
+      <span class="spacer"></span>
+      <span class="text-muted num" style="font-size:11px">${esc(it.closed||"—")}</span>
+    </div>
+    <div class="ctitle">${esc(it.title)}</div>
+  </button>`;
+}
+
+function archiveHTML(){
+  /* done and cancelled are separated because they answer different questions. Cancelled
+     is what you go looking for to find out whether something was already tried and why
+     it stopped - burying it inside everything that merely finished would lose it. */
+  const done = S.archive.filter(i=>i.status==="done");
+  const cancelled = S.archive.filter(i=>i.status==="cancelled");
+  const body = S.archiveLoading && !S.archiveLoaded
+      ? '<div class="center"><span class="text-muted">Loading archive…</span></div>'
+    : S.archiveError ? `<div class="err">${esc(S.archiveError)}</div>`
+    : !S.archive.length
+      ? '<div class="empty">Nothing archived yet. <code>wt archive --older-than 14d</code> moves closed items here.</div>'
+      : `<h3 style="margin-top:var(--space-5)">Done <span class="count num">${done.length}</span></h3>
+         ${done.map(archiveRowHTML).join("")||'<div class="empty">none</div>'}
+         <h3 style="margin-top:var(--space-5)">Cancelled <span class="count num">${cancelled.length}</span></h3>
+         ${cancelled.map(archiveRowHTML).join("")||'<div class="empty">none</div>'}`;
+  return `<div class="mlist">
+      <div class="crow"><button class="btn btn-ghost" data-mview="list">‹ Board</button>
+        <span class="spacer"></span>
+        <button class="btn btn-icon" id="arch-reload" title="Reload archive">${S.archiveLoading?"…":"↻"}</button></div>
+      <h3>Archive <span class="count num">${S.archiveLoaded?S.archive.length:""}</span></h3>
+      <p class="text-muted" style="font-size:12px">Closed items moved out of <code>items/</code>. Read-only.</p>
+      ${body}
+    </div>`;
+}
+
 /* Shared by both layouts. The Inbox button lives in the topbar, which renders on
    desktop too - so this view has to exist on both, or that button is dead. It was,
    on desktop, until 2026-07-23. */
@@ -1045,6 +1127,7 @@ function render(){
     ${mobile?"":`<input class="input" id="q" style="width:260px" placeholder="Search titles…" value="${esc(S.filters.query)}">`}
     <span class="text-muted" style="font-size:11px">${S.loading?"syncing…":esc(agoText())}${buildStamp()?" · build "+esc(buildStamp()):""}</span>
     <button class="badge num" data-mview="inbox">Inbox ${S.inbox.length}</button>
+    <button class="badge" data-mview="archive">Archive</button>
     ${mobile?"":'<button class="btn btn-primary" id="new">＋ Create Item</button>'}
     <button class="btn btn-icon" id="reload" title="Reload">${S.loading?"…":"↻"}</button>
   </header>`;
@@ -1069,6 +1152,7 @@ function render(){
       </div></div>`
     : S.loading && !S.items.length ? '<div class="center"><span class="text-muted">Loading…</span></div>'
     : S.mobileView==="inbox" ? inboxHTML()
+    : S.mobileView==="archive" ? archiveHTML()
     : mobile ? mobileHTML() : boardHTML();
 
   app.innerHTML = top + filters + body
@@ -1152,7 +1236,11 @@ function wire(){
   on("[data-seg]","click", e=>{ S.segment = e.currentTarget.dataset.seg; render(); });
   on("[data-tab]","click", e=>{ S.mobileTab = e.currentTarget.dataset.tab; S.mobileView="list"; render(); });
   on("[data-mview]","click", e=>{ S.mobileView = e.currentTarget.dataset.mview;
-    S.mobileTab="read"; render(); });
+    S.mobileTab="read"; render();
+    // Fetch on first open only - reopening the archive should not re-cost the blobs.
+    if(S.mobileView==="archive" && !S.archiveLoaded) loadArchive();
+  });
+  if($("#arch-reload")) $("#arch-reload").onclick = ()=>{ S.archiveLoaded=false; loadArchive(); };
 
   const capText = $("#cap-text"), capGo = $("#cap-go");
   if(capText && capGo){
