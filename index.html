@@ -145,6 +145,29 @@ textarea.input{min-height:110px;resize:vertical;line-height:1.5}
   background:var(--color-neutral-900);color:var(--color-neutral-300);border:1px solid var(--color-neutral-800)}
 .blockedby{display:flex;align-items:center;gap:5px;margin-top:var(--space-2);
   font-size:10.5px;color:var(--color-neutral-500)}
+
+/* ── collapsed row (see collapsedRowHTML for which signals must survive) ── */
+.coltog{background:transparent;border:0;color:var(--color-neutral-500);cursor:pointer;
+  font-size:10px;line-height:1;padding:3px 4px;border-radius:var(--radius-sm)}
+.coltog:hover{color:var(--color-neutral-200);background:var(--color-neutral-900)}
+.col.is-collapsed .collist{gap:3px}
+.crow1{position:relative;display:flex;align-items:center;gap:var(--space-2);width:100%;
+  background:var(--color-surface);border:1px solid var(--color-neutral-800);
+  border-radius:var(--radius-sm);padding:4px var(--space-3) 4px 10px;
+  cursor:pointer;font:inherit;color:inherit;text-align:left;overflow:hidden;flex:0 0 auto}
+.crow1::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--stripe)}
+.crow1:hover{border-color:var(--color-neutral-600)}
+.crow1.quick{box-shadow:0 0 0 1px var(--color-accent-700)}
+.crow1.blocked{border-style:dashed}
+.crow1.sel{box-shadow:0 0 0 2px var(--color-accent)}
+/* min-width:0 is what actually lets the ellipsis happen - a flex item defaults to
+   min-width:auto and refuses to shrink below its text, overflowing the row instead. */
+.c1title{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12px;line-height:1.5}
+.crow1.blocked .c1title{color:var(--color-neutral-400)}
+.crow1.cancelled .c1title{text-decoration:line-through;color:var(--color-neutral-500)}
+.c1pub{width:6px;height:6px;border-radius:50%;background:var(--color-accent);flex:0 0 auto;
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--color-accent) 25%,transparent)}
 .diamond{width:6px;height:6px;background:var(--color-neutral-600);transform:rotate(45deg);display:block}
 
 /* ── drawer / sheet ── */
@@ -270,7 +293,7 @@ textarea.input{min-height:110px;resize:vertical;line-height:1.5}
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const CFG = { owner:"simpsonbm1", repo:"worktracker", branch:"main" };
-const LS  = { tok:"wt.token", cache:"wt.blobs" };
+const LS  = { tok:"wt.token", cache:"wt.blobs", cols:"wt.cols" };
 
 const NEEDS   = ["needs-test","needs-decision","needs-asset"];
 const CLOSED  = ["done","cancelled"];
@@ -312,8 +335,20 @@ const S = {
   // innerHTML, so anything held only in an input is destroyed by any re-render -
   // a toast firing, a breakpoint change, the mobile keyboard resizing the viewport.
   captureText:"", captureProject:"",
+  // Per-column collapse, per DEVICE - not committed. The desktop and a second machine
+  // want different densities, and this is a view preference, not tracker data.
+  // Default: Done collapsed, everything else full. Needs-you must never default
+  // collapsed - it is the column the board exists to surface.
+  collapsed: loadCollapsed(),
   lastLoad:0, updateReady:false
 };
+function loadCollapsed(){
+  try{ return Object.assign({done:true}, JSON.parse(localStorage.getItem(LS.cols)||"{}")); }
+  catch{ return {done:true}; }
+}
+function saveCollapsed(){
+  try{ localStorage.setItem(LS.cols, JSON.stringify(S.collapsed)); }catch{}
+}
 const isMobile = ()=> window.matchMedia("(max-width:820px)").matches;
 
 /* ── utilities ─────────────────────────────────────────────────────────── */
@@ -731,6 +766,30 @@ function cardHTML(it){
   </button>`;
 }
 
+/* One-line form of a card. The ranking signals have to survive the loss of height or
+   collapsing undoes the prioritisation exactly when density makes it matter most:
+     stripe      -> kept (::before, height-independent)
+     blocked     -> kept (dashed border)
+     quick win   -> kept (1px accent ring)
+     published   -> the tag does not fit, so it becomes an accent dot
+   Impact, effort and the status chip are dropped: within a column status is constant,
+   and the sort already orders by impact, so the row's POSITION carries it. */
+function collapsedRowHTML(it){
+  const m = statusMeta(it.status);
+  const cls = ["crow1", isQuickWin(it)?"quick":"", it.status==="blocked"?"blocked":"",
+               it.status==="cancelled"?"cancelled":"",
+               S.selected===it.id?"sel":""].filter(Boolean).join(" ");
+  const stripe = it.published ? "var(--color-accent)" : m.stripe;
+  const tip = it.status==="blocked" && it.blocked_by.length
+    ? `${it.title} — blocked by ${it.blocked_by.join(", ")}` : it.title;
+  return `<button class="${cls}" style="--stripe:${stripe}" data-id="${esc(it.id)}" title="${esc(tip)}">
+    <i class="dot" style="background:${PROJECT_DOT[it.project]||"var(--color-neutral-600)"}"></i>
+    <span class="c1title">${esc(it.title)}</span>
+    ${it.published?'<i class="c1pub" title="published — strangers are running this build"></i>':""}
+    <span class="cid num">${esc(it.id)}</span>
+  </button>`;
+}
+
 const COLUMNS = [
   {key:"new",         name:"New",         match:it=>it.status==="new"},
   {key:"scoped",      name:"Scoped",      match:it=>it.status==="scoped"},
@@ -745,16 +804,24 @@ function boardHTML(){
   const items = visible();
   return `<div class="board">${COLUMNS.map(col=>{
     const list = items.filter(col.match).sort(rank);
-    const shown = col.key==="done" ? list.slice(0,8) : list;
-    return `<section class="col ${col.accent?"needs":""}">
+    const collapsed = !!S.collapsed[col.key];
+    /* Done is capped so a year of closed items cannot dominate a cold render. Collapsed
+       rows cost a fraction of the height, so the cap rises with the density - which is
+       the "collapsing Done relieves some of 0040's pressure" effect the item predicted. */
+    const cap = col.key==="done" ? (collapsed?24:8) : Infinity;
+    const shown = list.slice(0, cap);
+    return `<section class="col ${col.accent?"needs":""} ${collapsed?"is-collapsed":""}">
       <header class="colhead">
         <i class="dot" style="background:${col.accent?"var(--color-accent)":statusMeta(col.key==="needs"?"needs-test":col.key).stripe}"></i>
         ${col.name}<span class="spacer"></span><span class="count num">${list.length}</span>
+        <button class="coltog" data-col="${esc(col.key)}" aria-expanded="${!collapsed}"
+          title="${collapsed?"Expand":"Collapse"} ${esc(col.name)}"
+          aria-label="${collapsed?"Expand":"Collapse"} ${esc(col.name)} column">${collapsed?"▸":"▾"}</button>
       </header>
       <div class="collist">
-        ${shown.length ? shown.map(cardHTML).join("")
+        ${shown.length ? shown.map(collapsed?collapsedRowHTML:cardHTML).join("")
                        : '<div class="empty">nothing here</div>'}
-        ${col.key==="done"&&list.length>8?`<div class="empty">+${list.length-8} more closed</div>`:""}
+        ${list.length>cap?`<div class="empty">+${list.length-cap} more closed</div>`:""}
       </div>
     </section>`;
   }).join("")}</div>`;
@@ -995,6 +1062,18 @@ function wire(){
   if($("#clear")) $("#clear").onclick = ()=>{ S.filters={projects:[],types:[],query:""}; render(); };
 
   on("[data-id]","click", e=>{ S.selected = e.currentTarget.dataset.id; render(); });
+
+  /* Preserve the board's horizontal scroll, as the search box does. Without it,
+     collapsing a column you had scrolled to snaps the board back to the far left -
+     away from the column you were just working in. */
+  on("[data-col]","click", e=>{
+    const k = e.currentTarget.dataset.col;
+    S.collapsed[k] = !S.collapsed[k];
+    saveCollapsed();
+    const pos = (document.querySelector(".board")||{}).scrollLeft || 0;
+    render();
+    const b = document.querySelector(".board"); if(b) b.scrollLeft = pos;
+  });
   on("[data-close]","click", ()=>{ S.selected=null; S.capture=false; render(); });
   on("[data-move]","click", e=>{
     const it = S.items.find(i=>i.id===S.selected); if(it) moveItem(it, e.currentTarget.dataset.move);
