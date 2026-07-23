@@ -102,8 +102,16 @@ textarea.input{min-height:110px;resize:vertical;line-height:1.5}
   border:1px solid var(--color-neutral-900);overflow:hidden}
 .col.needs{background:color-mix(in srgb,var(--color-accent) 9%,var(--color-bg));
   border-color:var(--color-accent-800)}
+/* The whole header is the collapse control. A 22px chevron was still a speck beside a
+   262px header, and nothing else in the header is interactive, so there is no click to
+   steal by widening the target to the full row. */
 .colhead{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-4);
-  font-size:12.5px;font-family:var(--font-heading);flex:0 0 auto}
+  font-size:12.5px;font-family:var(--font-heading);flex:0 0 auto;
+  width:100%;background:transparent;border:0;color:inherit;font-weight:inherit;
+  text-align:left;cursor:pointer;border-radius:var(--radius-lg) var(--radius-lg) 0 0}
+.colhead:hover{background:var(--color-neutral-900)}
+.col.needs .colhead:hover{background:color-mix(in srgb,var(--color-accent) 14%,transparent)}
+.colhead:focus-visible{outline:2px solid var(--color-accent);outline-offset:-2px}
 .col.needs .colhead{color:var(--color-accent-200)}
 .count{font-size:10.5px;padding:1px 7px;border-radius:999px;background:var(--color-neutral-900);
   color:var(--color-neutral-400);border:1px solid var(--color-neutral-800)}
@@ -147,12 +155,12 @@ textarea.input{min-height:110px;resize:vertical;line-height:1.5}
   font-size:10.5px;color:var(--color-neutral-500)}
 
 /* ── collapsed row (see collapsedRowHTML for which signals must survive) ── */
-/* 22px square minimum. At the 16px/10px this started as, the toggle read as a speck of
-   punctuation rather than a control, and was an uncomfortably small click target. */
-.coltog{background:transparent;border:0;color:var(--color-neutral-400);cursor:pointer;
-  font-size:12px;line-height:1;display:flex;align-items:center;justify-content:center;
-  width:22px;height:22px;margin:-4px -4px -4px 0;border-radius:var(--radius-sm)}
-.coltog:hover{color:var(--color-neutral-100);background:var(--color-neutral-800)}
+/* Affordance only — the header itself carries the click, so this is not a button and
+   must not be focusable or it becomes a second tab stop for the same action. */
+.coltog{color:var(--color-neutral-400);font-size:14px;line-height:1;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;width:18px;height:18px;
+  margin-right:-2px;pointer-events:none}
+.colhead:hover .coltog{color:var(--color-neutral-100)}
 .col.needs .coltog{color:var(--color-accent-200)}
 .col.is-collapsed .collist{gap:3px}
 .crow1{position:relative;display:flex;align-items:center;gap:var(--space-2);width:100%;
@@ -815,13 +823,13 @@ function boardHTML(){
     const cap = col.key==="done" ? (collapsed?24:8) : Infinity;
     const shown = list.slice(0, cap);
     return `<section class="col ${col.accent?"needs":""} ${collapsed?"is-collapsed":""}">
-      <header class="colhead">
+      <button class="colhead" data-col="${esc(col.key)}" aria-expanded="${!collapsed}"
+        title="${collapsed?"Expand":"Collapse"} ${esc(col.name)}"
+        aria-label="${collapsed?"Expand":"Collapse"} ${esc(col.name)} column">
         <i class="dot" style="background:${col.accent?"var(--color-accent)":statusMeta(col.key==="needs"?"needs-test":col.key).stripe}"></i>
         ${col.name}<span class="spacer"></span><span class="count num">${list.length}</span>
-        <button class="coltog" data-col="${esc(col.key)}" aria-expanded="${!collapsed}"
-          title="${collapsed?"Expand":"Collapse"} ${esc(col.name)}"
-          aria-label="${collapsed?"Expand":"Collapse"} ${esc(col.name)} column">${collapsed?"▸":"▾"}</button>
-      </header>
+        <span class="coltog">${collapsed?"▸":"▾"}</span>
+      </button>
       <div class="collist">
         ${shown.length ? shown.map(collapsed?collapsedRowHTML:cardHTML).join("")
                        : '<div class="empty">nothing here</div>'}
