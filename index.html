@@ -840,6 +840,27 @@ function authHTML(){
   </div></div>`;
 }
 
+/* Shared by both layouts. The Inbox button lives in the topbar, which renders on
+   desktop too - so this view has to exist on both, or that button is dead. It was,
+   on desktop, until 2026-07-23. */
+function inboxHTML(){
+  return `<div class="mlist">
+      <div class="crow"><button class="btn btn-ghost" data-mview="list">‹ Board</button>
+        <span class="spacer"></span></div>
+      <h3>Inbox <span class="count num">${S.inbox.length}</span></h3>
+      <p class="text-muted" style="font-size:12px">Raw captures · unnumbered, awaiting scoping by <code>wt</code>.</p>
+      ${S.inbox.length?S.inbox.map(n=>`<div>
+        <div class="crow" style="margin-bottom:4px">
+          ${n.project?`<span class="cproj"><i class="dot" style="background:${PROJECT_DOT[n.project]||"var(--color-neutral-600)"}"></i>${esc(n.project)}</span>`:""}
+          <span class="text-muted" style="font-size:11px">${esc(n.when||n.name)}</span>
+          <span class="spacer"></span><span class="tag">Unscoped</span>
+          ${n.isNew?'<span class="tag tag-outline">New</span>':""}
+        </div>
+        <div class="inboxitem">${esc(n.text)}</div></div>`).join("")
+        :'<div class="empty">inbox empty</div>'}
+    </div>`;
+}
+
 function mobileHTML(){
   const items = visible();
   /* Mobile has no columns - this segmented filter IS the column set. Every desktop
@@ -857,21 +878,6 @@ function mobileHTML(){
   const list = items.filter(seg[2]).sort(rank);
 
   if(S.mobileTab==="capture") return `<div class="mlist">${captureHTML()}</div>`;
-  if(S.mobileView==="inbox") return `<div class="mlist">
-      <div class="crow"><button class="btn btn-ghost" data-mview="list">‹ Board</button>
-        <span class="spacer"></span></div>
-      <h3>Inbox <span class="count num">${S.inbox.length}</span></h3>
-      <p class="text-muted" style="font-size:12px">Raw captures · unnumbered, awaiting scoping by <code>wt</code>.</p>
-      ${S.inbox.length?S.inbox.map(n=>`<div>
-        <div class="crow" style="margin-bottom:4px">
-          ${n.project?`<span class="cproj"><i class="dot" style="background:${PROJECT_DOT[n.project]||"var(--color-neutral-600)"}"></i>${esc(n.project)}</span>`:""}
-          <span class="text-muted" style="font-size:11px">${esc(n.when||n.name)}</span>
-          <span class="spacer"></span><span class="tag">Unscoped</span>
-          ${n.isNew?'<span class="tag tag-outline">New</span>':""}
-        </div>
-        <div class="inboxitem">${esc(n.text)}</div></div>`).join("")
-        :'<div class="empty">inbox empty</div>'}
-    </div>`;
 
   return `<div style="padding:var(--space-4) var(--space-4) 0">
       <h3 style="margin-bottom:0">${esc(seg[1])} <span class="count num">${list.length}</span></h3>
@@ -924,6 +930,7 @@ function render(){
           <button class="btn btn-ghost" id="forget">Use a different token</button></div>
       </div></div>`
     : S.loading && !S.items.length ? '<div class="center"><span class="text-muted">Loading…</span></div>'
+    : S.mobileView==="inbox" ? inboxHTML()
     : mobile ? mobileHTML() : boardHTML();
 
   app.innerHTML = top + filters + body
