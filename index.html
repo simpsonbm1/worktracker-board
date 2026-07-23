@@ -712,6 +712,49 @@ async function commitItem(item, newRaw, message){
   }
 }
 
+async function deleteFile(path, sha, message){
+  return gh(`/repos/${CFG.owner}/${CFG.repo}/contents/${encodeURI(path)}`, {
+    method:"DELETE",
+    body: JSON.stringify({ message, sha, branch:CFG.branch })
+  });
+}
+
+/* Archive one item on demand, regardless of age - the manual counterpart to
+   `wt archive --older-than`, for when something is obviously finished with.
+
+   The Contents API has no move, so this is CREATE-then-DELETE, and that order is the
+   safety property, not an accident. If the delete fails the item exists in both places:
+   visible, harmless, and fixable by hand. Delete-first would lose the file outright if
+   the create then failed. Two calls can never be atomic here, so the only real choice is
+   which failure mode to have. */
+async function archiveItem(item){
+  if(!CLOSED.includes(item.status)){ toast("only closed items can be archived"); return; }
+  const dir = item.status==="cancelled" ? "archive/cancelled" : "archive";
+  const dest = `${dir}/${item.path.replace(/^items\//,"")}`;
+  const msg = `board: archive ${item.id} ${item.title}`;
+  try{
+    await putFile(dest, item.raw, null, msg);      // no sha: dest must not already exist
+  }catch(e){
+    toast("Archive failed (nothing moved): "+e.message);
+    return;
+  }
+  try{
+    await deleteFile(item.path, item.sha, msg);
+  }catch(e){
+    /* Deliberately loud. The item is now in BOTH places and the board would otherwise
+       show it as archived while items/ still holds it - which is exactly the state the
+       user would never think to check for. */
+    toast(`Copied to ${dir}/ but items/ delete failed — #${item.id} is in both places`);
+    await loadAll();
+    return;
+  }
+  S.items = S.items.filter(i => i.id !== item.id);
+  S.archiveLoaded = false;   // refetch next time the archive is opened
+  S.selected = null;
+  toast(`#${item.id} archived`);
+  render();
+}
+
 /* ── gate-aware transitions (mirrors the CLI gates) ────────────────────── */
 function actionsFor(st){
   switch(st){
@@ -728,7 +771,10 @@ function actionsFor(st){
     case "needs-test":     return [["✓ Confirm","__confirm","primary"],["Send back","in-progress",""]];
     case "needs-decision": return [["Decision made","in-progress","primary"]];
     case "needs-asset":    return [["Asset delivered","scoped","primary"]];
-    case "done": case "cancelled": return [["Reopen","scoped",""]];
+    // Archive is __archive rather than a status target: it moves the FILE and leaves
+    // status alone. Closed items only - archiveItem refuses anything else too, since a
+    // button is not a gate.
+    case "done": case "cancelled": return [["Reopen","scoped",""],["Archive","__archive",""]];
     default: return [];
   }
 }
@@ -1231,7 +1277,9 @@ function wire(){
   });
   on("[data-close]","click", ()=>{ S.selected=null; S.capture=false; render(); });
   on("[data-move]","click", e=>{
-    const it = S.items.find(i=>i.id===S.selected); if(it) moveItem(it, e.currentTarget.dataset.move);
+    const it = S.items.find(i=>i.id===S.selected); if(!it) return;
+    const target = e.currentTarget.dataset.move;
+    if(target === "__archive") archiveItem(it); else moveItem(it, target);
   });
   on("[data-seg]","click", e=>{ S.segment = e.currentTarget.dataset.seg; render(); });
   on("[data-tab]","click", e=>{ S.mobileTab = e.currentTarget.dataset.tab; S.mobileView="list"; render(); });
