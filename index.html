@@ -309,11 +309,67 @@ const LS  = { tok:"wt.token", cache:"wt.blobs", cols:"wt.cols" };
 
 const NEEDS   = ["needs-test","needs-decision","needs-asset"];
 const CLOSED  = ["done","cancelled"];
-const PROJECT_DOT = {
-  idlegame:"var(--color-accent)", askamods:"var(--color-neutral-300)",
-  "eq-luas":"var(--color-neutral-500)", general:"var(--color-neutral-700)",
-  "claude-config":"var(--color-accent-700)", worktracker:"var(--color-neutral-400)"
-};
+/* Project dot colours are DERIVED, never listed (0038).
+   This file is in the PUBLIC repo. A literal {name:colour, …} map told anyone reading
+   the source exactly which projects exist - no titles or data, but the names.
+   (Do not "helpfully" name an example project in a comment here - that reintroduces
+   exactly what this removed.)
+   Hashing the name instead means the public source carries no project names at all,
+   and a newly registered project gets a colour with no edit here.
+
+   Palette, not free hue: an arbitrary hsl() would wander outside the design system on a
+   dark background. Collisions between two projects are possible and cosmetic - the dot
+   always sits next to the name it belongs to. */
+const DOT_PALETTE = [
+  "var(--color-accent)",      "var(--color-neutral-300)", "var(--color-accent-400)",
+  "var(--color-neutral-500)", "var(--color-accent-600)",  "var(--color-neutral-400)",
+  "var(--color-accent-300)",  "var(--color-neutral-600)"
+];
+/* Uncategorized items (empty project) are a real state, not missing data - see the
+   worktracker CLAUDE.md. They get one fixed muted colour so they read as a group. */
+const DOT_NONE = "var(--color-neutral-800)";
+const NO_PROJECT = "(none)";
+
+/* FNV-1a, 32-bit. Any stable string hash would do; this one is short and has no
+   dependencies. >>>0 keeps it unsigned so the modulo cannot go negative. */
+function hashName(name){
+  let h = 0x811c9dc5;
+  for(let i=0;i<name.length;i++){
+    h ^= name.charCodeAt(i);
+    h = Math.imul(h, 0x01000193) >>> 0;
+  }
+  return h;
+}
+
+/* Raw hashing alone collided on two of the four active projects, which defeats the only
+   job the dot has. So the hash picks a STARTING slot and collisions probe to the next
+   free one: distinct colours are guaranteed whenever projects <= palette size, while the
+   name still decides where it lands. Recomputed only when the set of projects changes. */
+let _dotCache = { key:null, map:null };
+function dotMap(){
+  const names = [...new Set((S.items||[]).map(i=>i.project).filter(Boolean))].sort();
+  const key = names.join(" ");
+  if(_dotCache.key === key) return _dotCache.map;
+  const map = {}, used = new Set();
+  for(const n of names){
+    let i = hashName(n) % DOT_PALETTE.length;
+    for(let k=0; k<DOT_PALETTE.length && used.has(i); k++) i = (i+1) % DOT_PALETTE.length;
+    used.add(i); map[n] = DOT_PALETTE[i];
+  }
+  _dotCache = { key, map };
+  return map;
+}
+
+function projectDot(name){
+  if(!name) return DOT_NONE;
+  /* Fall back to the bare hash for a name not in the loaded set - inbox notes can
+     carry a project that no item uses yet. */
+  return dotMap()[name] || DOT_PALETTE[hashName(name) % DOT_PALETTE.length];
+}
+
+/* Empty project must never render as blank - blank reads as a bug, "(none)" reads as
+   a state. */
+function projectLabel(name){ return name || NO_PROJECT; }
 const TYPE_SHORT = { feature:"FEAT", bug:"BUG", idea:"IDEA", research:"RSCH",
                      chore:"CHORE", application:"APP" };
 
@@ -600,7 +656,7 @@ function parseInbox(raw, path){
   const field = k => (lines.find(l=>new RegExp("^"+k+":").test(l))||"").replace(new RegExp("^"+k+":\\s*"),"");
   const text = lines.filter(l=>l.trim() && !/^(captured|source|project):/.test(l)).join("\n").trim();
   const src = field("source");
-  // Legacy form: project smuggled into source as "board (askamods)".
+  // Legacy form: project smuggled into source as "board (<project>)".
   const legacy = (src.match(/\(([a-z0-9-]+)\)/)||[])[1] || "";
   return { path, name, text, source:src, when:field("captured"), project:field("project")||legacy };
 }
@@ -705,7 +761,7 @@ async function appendCapture(text, project){
   const path = `inbox/${stamp}-${slug}.md`;
   const when = new Date().toISOString().slice(0,16).replace("T"," ");
   // project gets its OWN field. It used to be smuggled into `source:` as
-  // "board (askamods)", where wt inbox filtered it out of the display, wt scope
+  // "board (<project>)", where wt inbox filtered it out of the display, wt scope
   // ignored it, and the user's chip selection silently did nothing.
   const content = `captured: ${when} UTC\nsource: board`
                 + (project ? `\nproject: ${project}` : "")
@@ -757,7 +813,7 @@ function cardHTML(it){
   const showEffort = !NEEDS.includes(it.status) && it.effort && it.effort!=="-";
   return `<button class="${cls}" style="--stripe:${stripe}" data-id="${esc(it.id)}">
     <div class="crow">
-      <span class="cproj"><i class="dot" style="background:${PROJECT_DOT[it.project]||"var(--color-neutral-600)"}"></i>${esc(it.project)}</span>
+      <span class="cproj"><i class="dot" style="background:${projectDot(it.project)}"></i>${esc(projectLabel(it.project))}</span>
       <span class="tag">${esc(TYPE_SHORT[it.type]||it.type||"—")}</span>
       <span class="spacer"></span>
       ${isQuickWin(it)?'<span class="tag tag-outline">Quick win</span>':""}
@@ -795,7 +851,7 @@ function collapsedRowHTML(it){
   const tip = it.status==="blocked" && it.blocked_by.length
     ? `${it.title} — blocked by ${it.blocked_by.join(", ")}` : it.title;
   return `<button class="${cls}" style="--stripe:${stripe}" data-id="${esc(it.id)}" title="${esc(tip)}">
-    <i class="dot" style="background:${PROJECT_DOT[it.project]||"var(--color-neutral-600)"}"></i>
+    <i class="dot" style="background:${projectDot(it.project)}"></i>
     <span class="c1title">${esc(it.title)}</span>
     ${it.published?'<i class="c1pub" title="published — strangers are running this build"></i>':""}
     <span class="cid num">${esc(it.id)}</span>
@@ -859,7 +915,7 @@ function detailHTML(it){
     <div class="dbody">
       <div class="crow">
         <span class="cid num">${esc(it.id)}</span>
-        <span class="cproj"><i class="dot" style="background:${PROJECT_DOT[it.project]||"var(--color-neutral-600)"}"></i>${esc(it.project)}</span>
+        <span class="cproj"><i class="dot" style="background:${projectDot(it.project)}"></i>${esc(projectLabel(it.project))}</span>
         <span class="tag">${esc(TYPE_SHORT[it.type]||it.type)}</span>
         <span class="spacer"></span>
         ${it.published?'<span class="tag tag-pub">Published</span>':""}
@@ -882,13 +938,16 @@ function detailHTML(it){
 }
 
 function captureHTML(){
-  const projects = Object.keys(PROJECT_DOT);
+  /* Derived from loaded items, not from a literal list - that map was the last place
+     project names appeared in this public file (0038). Uncategorized is excluded: the
+     chips are opt-in, and picking none IS the uncategorized case. */
+  const projects = [...new Set(S.items.map(i=>i.project).filter(Boolean))].sort();
   return `<h3>Create Item</h3>
     <p class="text-muted" style="font-size:12.5px">→ inbox/ · unnumbered, awaiting scoping by <code>wt</code></p>
     <textarea class="input" id="cap-text" placeholder="What is the idea?">${esc(S.captureText)}</textarea>
     <div class="crow" style="flex-wrap:wrap;margin:var(--space-4) 0">
       ${projects.map(p=>`<button class="chip" data-capproj="${esc(p)}" aria-pressed="${p===S.captureProject}">
-        <i class="dot" style="background:${PROJECT_DOT[p]}"></i>${esc(p)}</button>`).join("")}
+        <i class="dot" style="background:${projectDot(p)}"></i>${esc(p)}</button>`).join("")}
     </div>
     <div class="crow" style="margin:0">
       <span class="spacer"></span>
@@ -930,7 +989,7 @@ function inboxHTML(){
       <p class="text-muted" style="font-size:12px">Raw captures · unnumbered, awaiting scoping by <code>wt</code>.</p>
       ${S.inbox.length?S.inbox.map(n=>`<div>
         <div class="crow" style="margin-bottom:4px">
-          ${n.project?`<span class="cproj"><i class="dot" style="background:${PROJECT_DOT[n.project]||"var(--color-neutral-600)"}"></i>${esc(n.project)}</span>`:""}
+          ${n.project?`<span class="cproj"><i class="dot" style="background:${projectDot(n.project)}"></i>${esc(n.project)}</span>`:""}
           <span class="text-muted" style="font-size:11px">${esc(n.when||n.name)}</span>
           <span class="spacer"></span><span class="tag">Unscoped</span>
           ${n.isNew?'<span class="tag tag-outline">New</span>':""}
@@ -995,7 +1054,7 @@ function render(){
   const filters = mobile ? "" : `<div class="filterbar">
     <span class="flabel">Project</span>
     ${projects.map(p=>`<button class="chip" data-fp="${esc(p)}" aria-pressed="${S.filters.projects.includes(p)}">
-      <i class="dot" style="background:${PROJECT_DOT[p]||"var(--color-neutral-600)"}"></i>${esc(p)}</button>`).join("")}
+      <i class="dot" style="background:${projectDot(p)}"></i>${esc(projectLabel(p))}</button>`).join("")}
     <span class="sep"></span><span class="flabel">Type</span>
     ${types.map(t=>`<button class="chip" data-ft="${esc(t)}" aria-pressed="${S.filters.types.includes(t)}">${esc(t)}</button>`).join("")}
     ${(S.filters.projects.length||S.filters.types.length||S.filters.query)
